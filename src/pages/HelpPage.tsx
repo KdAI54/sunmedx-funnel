@@ -151,7 +151,7 @@ export function HelpPage() {
             runs directly inside this workspace.
           </p>
           <div className="sx-actions" style={{ marginTop: 14 }}>
-            <Link to="/site" className="sx-btn sx-btn-ghost">
+            <Link to="/" className="sx-btn sx-btn-ghost">
               Open the public page
             </Link>
             <Link to="/settings" className="sx-btn sx-btn-ghost">

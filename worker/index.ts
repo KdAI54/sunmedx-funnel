@@ -14,6 +14,9 @@ export interface Env {
   ASSETS: AssetsFetcherLike;
   SUNMEDX_KV?: KvNamespaceLike;
   GEMINI_API_KEY?: string;
+  APP_URL?: string;
+  APP_NAME?: string;
+  ENVIRONMENT?: string;
 }
 
 const KV_KEY = 'sunmedx:db:v1';
@@ -58,7 +61,12 @@ export default {
         return new Response(null, { status: 204 });
       }
       const storage = createWorkerStorage(env);
-      return handleApiRequest(request, storage, env.GEMINI_API_KEY);
+      return handleApiRequest(request, storage, env.GEMINI_API_KEY, {
+        environment: env.ENVIRONMENT || 'production',
+        appName: env.APP_NAME || 'Sunmedx · Funnel Autopilot',
+        appUrl: env.APP_URL || url.origin,
+        storage: env.SUNMEDX_KV ? 'cloudflare-kv' : 'memory',
+      });
     }
 
     return env.ASSETS.fetch(request);

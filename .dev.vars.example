@@ -1,0 +1,5 @@
+# Local Cloudflare Wrangler variables (copy to .dev.vars for `npx wrangler dev`)
+ENVIRONMENT="development"
+APP_NAME="Sunmedx · Funnel Autopilot"
+APP_URL="http://localhost:3000"
+GEMINI_API_KEY=""

@@ -37,10 +37,18 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
+export interface ApiRuntimeInfo {
+  environment?: string;
+  appName?: string;
+  appUrl?: string;
+  storage?: string;
+}
+
 export async function handleApiRequest(
   request: Request,
   storage: DbAdapter,
-  geminiApiKey?: string
+  geminiApiKey?: string,
+  runtimeInfo?: ApiRuntimeInfo
 ): Promise<Response> {
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/+$/, '') || '/';
@@ -48,7 +56,13 @@ export async function handleApiRequest(
 
   try {
     if (method === 'GET' && pathname === '/api/health') {
-      return json({ ok: true, service: 'sunmedx-funnel-autopilot' });
+      return json({
+        ok: true,
+        service: 'sunmedx-funnel-autopilot',
+        environment: runtimeInfo?.environment || 'development',
+        storage: runtimeInfo?.storage || 'local-json',
+        aiConfigured: Boolean(geminiApiKey),
+      });
     }
 
     // Public brand config for /site

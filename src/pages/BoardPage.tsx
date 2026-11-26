@@ -175,11 +175,11 @@ export function BoardPage() {
 
       {!loading && leads.length === 0 && (
         <EmptyState title="No leads yet">
-          The chat on the{' '}
-          <Link to="/site" className="as1-textlink">
-            public landing page
+          The lead magnet and chat on the{' '}
+          <Link to="/" className="as1-textlink">
+            landing page
           </Link>{' '}
-          creates them, or add one by hand.
+          capture them automatically, or add one by hand.
         </EmptyState>
       )}
     </div>

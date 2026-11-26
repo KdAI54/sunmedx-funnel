@@ -11,9 +11,7 @@ const CONTENT_CHANNELS = ['Instagram', 'LinkedIn', 'Blog', 'Email', 'Landing pag
 export function ContentPage() {
   const toast = useToast();
   const [channel, setChannel] = useState('Instagram');
-  const [topic, setTopic] = useState(
-    'Why your 3pm crash is a blood-sugar problem, not a coffee problem'
-  );
+  const [topic, setTopic] = useState('');
   const [writing, setWriting] = useState(false);
   const [items, setItems] = useState<ContentPiece[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +80,7 @@ export function ContentPage() {
               className="sx-input"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+              placeholder="Enter a topic or angle to write about"
             />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

@@ -44,7 +44,12 @@ async function startServer() {
     const webResponse = await handleApiRequest(
       webRequest,
       nodeDbAdapter,
-      process.env.GEMINI_API_KEY
+      process.env.GEMINI_API_KEY,
+      {
+        environment: process.env.NODE_ENV || 'development',
+        appUrl: process.env.APP_URL,
+        storage: 'local-json',
+      }
     );
 
     res.status(webResponse.status);

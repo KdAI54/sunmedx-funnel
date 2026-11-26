@@ -35,9 +35,7 @@ export function GeneratorIndexPage() {
   const [loading, setLoading] = useState(true);
 
   const [type, setType] = useState<Campaign['type']>('full_campaign');
-  const [topic, setTopic] = useState(
-    'Why your 3pm crash is a blood-sugar problem, not a coffee problem'
-  );
+  const [topic, setTopic] = useState('');
   const [audience, setAudience] = useState('');
   const [channels, setChannels] = useState<string[]>([
     'Instagram',

@@ -9,7 +9,7 @@ import type { Experiment } from '../types/funnel';
 export function ExperimentsPage() {
   const toast = useToast();
   const [items, setItems] = useState<Experiment[]>([]);
-  const [topic, setTopic] = useState('Landing page headline: protocol vs. symptoms');
+  const [topic, setTopic] = useState('');
   const [busy, setBusy] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +94,7 @@ export function ExperimentsPage() {
               className="sx-input"
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. Landing page headline or offer framing"
             />
           </div>
           <div>

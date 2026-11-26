@@ -164,25 +164,6 @@ export function LoginPage({
           <Link to="/" className="as1-textlink">
             Back to landing page
           </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setEmail('operator@sunmedx.app');
-              setName('Sunmedx Owner');
-              setError('');
-            }}
-            style={{
-              background: 'none',
-              border: 0,
-              padding: 0,
-              color: '#94a3b8',
-              font: 'inherit',
-              cursor: 'pointer',
-              fontSize: 11.5,
-            }}
-          >
-            Use demo email
-          </button>
         </div>
       </div>
     </div>

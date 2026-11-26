@@ -10,10 +10,17 @@
     "html_handling": "auto-trailing-slash",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "APP_NAME": "Sunmedx · Funnel Autopilot",
+    "APP_URL": "https://sunmedx-funnel-autopilot.workers.dev"
   }
-  // Optional: attach a KV namespace named SUNMEDX_KV in Cloudflare Dashboard
-  // (Workers & Pages -> Bindings) or uncomment below with your KV namespace ID
-  // for cross-region persistent storage:
+  // Secrets (set in Cloudflare Dashboard -> Settings -> Variables and Secrets,
+  // via `npx wrangler secret put GEMINI_API_KEY`, or in local `.dev.vars`):
+  //   GEMINI_API_KEY
+  //
+  // Optional KV binding (Cloudflare Dashboard -> Settings -> Bindings -> KV Namespace):
   // "kv_namespaces": [
   //   { "binding": "SUNMEDX_KV", "id": "YOUR_KV_NAMESPACE_ID" }
   // ]
