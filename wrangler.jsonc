@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sunmedx-funnel-autopilot",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-12-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+  // Optional: attach a KV namespace named SUNMEDX_KV in Cloudflare Dashboard
+  // (Workers & Pages -> Bindings) or uncomment below with your KV namespace ID
+  // for cross-region persistent storage:
+  // "kv_namespaces": [
+  //   { "binding": "SUNMEDX_KV", "id": "YOUR_KV_NAMESPACE_ID" }
+  // ]
+}

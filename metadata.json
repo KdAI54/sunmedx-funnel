@@ -1,0 +1,6 @@
+{
+  "name": "Sunmedx · Funnel Autopilot",
+  "description": "The Sunmedx operator console: funnel stages, AI activity and automations that turn strangers into first customers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
