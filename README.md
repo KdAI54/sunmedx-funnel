@@ -11,9 +11,11 @@ Non-secret runtime variables are pre-configured in `wrangler.jsonc` (`vars`):
 - `APP_NAME` (`"Sunmedx · Funnel Autopilot"`)
 - `APP_URL` (`"https://sunmedx-funnel-autopilot.workers.dev"` — update to your custom domain or workers.dev URL if different)
 
-Secrets & Bindings to set in Cloudflare Dashboard (**Workers & Pages → Settings**):
-- **Variables and Secrets**: Add `GEMINI_API_KEY` (Secret) for live Gemini responses (deterministic fallbacks run if omitted).
-- **Bindings (Optional)**: Bind a Workers KV namespace named `SUNMEDX_KV` for cross-request persistence across edge isolates.
+Secrets & Storage Bindings to set in Cloudflare Dashboard (**Workers & Pages → Settings**):
+- **Variables and Secrets**: Add `GEMINI_API_KEY` (Secret) for live Gemini responses (deterministic fallbacks run if omitted). When activating live social/email publishing in the Setup Wizards, add the corresponding token secret shown inside the wizard (e.g. `PINTEREST_ACCESS_TOKEN`, `BREVO_API_KEY`, `INSTAGRAM_ACCESS_TOKEN`, `MAILCHIMP_API_KEY`, `KLAVIYO_API_KEY`, `KIT_API_KEY`, `RESEND_API_KEY`).
+- **Persistent Cloudflare Storage (choose KV or D1)**:
+  - **Option 1 — Cloudflare KV (`SUNMEDX_KV`)**: Create a KV namespace (`npx wrangler kv namespace create SUNMEDX_KV`) and attach it under **Settings → Bindings** with variable name `SUNMEDX_KV` (or uncomment `kv_namespaces` in `wrangler.jsonc`).
+  - **Option 2 — Cloudflare D1 SQLite (`SUNMEDX_DB`)**: Create a D1 database (`npx wrangler d1 create sunmedx-db`) and attach it under **Settings → Bindings** with variable name `SUNMEDX_DB` (or uncomment `d1_databases` in `wrangler.jsonc`). The Worker auto-creates the `sunmedx_state` table on first load.
 
 For local Wrangler testing, copy `.dev.vars.example` to `.dev.vars` and fill in your key.
 
@@ -25,7 +27,7 @@ For local Wrangler testing, copy `.dev.vars.example` to `.dev.vars` and fill in 
 3. Cloudflare reads `wrangler.jsonc` automatically:
    - **Build command**: `npm run build`
    - **Deploy command**: `npx wrangler deploy`
-4. Add `GEMINI_API_KEY` under **Settings → Variables and Secrets** and optionally bind `SUNMEDX_KV` under **Settings → Bindings**.
+4. Add `GEMINI_API_KEY` under **Settings → Variables and Secrets** and bind `SUNMEDX_KV` or `SUNMEDX_DB` under **Settings → Bindings**.
 
 ### Option B — GitHub Actions CI/CD
 The included workflow `.github/workflows/deploy-cloudflare.yml` automatically typechecks, builds, and deploys on every push to `main`.

@@ -388,16 +388,22 @@ export function SitePage({
             <a href="#how">How it works</a>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Link to={dashboardTarget} className="lp-btn lp-btn-sm lp-btn-cobalt">
-              {isLoggedIn ? 'Open Dashboard' : 'Jump to Dashboard'}
+            <Link to="/login" className="lp-btn lp-btn-sm lp-btn-ghost">
+              {isLoggedIn ? 'Switch Login' : 'Login'}
             </Link>
-            <button
-              type="button"
-              className="lp-btn lp-btn-sm lp-btn-primary"
-              onClick={scrollToMagnet}
-            >
-              Free Blueprint
-            </button>
+            {isLoggedIn ? (
+              <Link to="/dashboard" className="lp-btn lp-btn-sm lp-btn-cobalt">
+                Dashboard
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="lp-btn lp-btn-sm lp-btn-primary"
+                onClick={scrollToMagnet}
+              >
+                Free Blueprint
+              </button>
+            )}
           </div>
         </nav>
 
@@ -761,7 +767,7 @@ export function SitePage({
               Get My Protocol <ArrowRight size={15} />
             </button>
             <Link to={dashboardTarget} className="lp-btn lp-btn-cobalt">
-              {isLoggedIn ? 'Open Dashboard' : 'Jump to Dashboard'}
+              {isLoggedIn ? 'Open Dashboard' : 'Login to Dashboard'}
             </Link>
           </div>
         </section>
@@ -783,11 +789,14 @@ export function SitePage({
             >
               Ask the advisor
             </button>
-            <Link to={dashboardTarget} style={{ color: '#94a8cc', textDecoration: 'none' }}>
-              {isLoggedIn && operatorEmail
-                ? `Dashboard (${operatorEmail})`
-                : 'Jump to dashboard'}
+            <Link to="/login" style={{ color: '#94a8cc', textDecoration: 'none' }}>
+              Operator Login
             </Link>
+            {isLoggedIn && (
+              <Link to="/dashboard" style={{ color: '#94a8cc', textDecoration: 'none' }}>
+                {operatorEmail ? `Dashboard (${operatorEmail})` : 'Dashboard'}
+              </Link>
+            )}
           </span>
         </footer>
       </div>

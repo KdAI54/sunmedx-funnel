@@ -9,7 +9,12 @@ import {
   runAutopilotCycle,
   scoreLeadWithAI,
 } from './ai.ts';
-import { makeId, type SunmedxDatabase } from './seed.ts';
+import {
+  createInitialDb,
+  ensureCatalogChannels,
+  makeId,
+  type SunmedxDatabase,
+} from './seed.ts';
 
 export interface DbAdapter {
   load(): Promise<SunmedxDatabase> | SunmedxDatabase;
@@ -56,13 +61,68 @@ export async function handleApiRequest(
 
   try {
     if (method === 'GET' && pathname === '/api/health') {
+      const activeStorage = runtimeInfo?.storage || 'local-json';
       return json({
         ok: true,
         service: 'sunmedx-funnel-autopilot',
         environment: runtimeInfo?.environment || 'development',
-        storage: runtimeInfo?.storage || 'local-json',
+        storage: activeStorage,
+        cloudflarePersistent:
+          activeStorage === 'cloudflare-kv' || activeStorage === 'cloudflare-d1',
         aiConfigured: Boolean(geminiApiKey),
       });
+    }
+
+    // Full state snapshot & restore for persistent cross-session mirror
+    if (method === 'GET' && pathname === '/api/state') {
+      const db = await storage.load();
+      db.channels = ensureCatalogChannels(db.channels || []);
+      return json(db);
+    }
+
+    if (method === 'PUT' && pathname === '/api/state') {
+      const current = await storage.load();
+      const body = await readBody(request);
+      const base = createInitialDb();
+      const next: SunmedxDatabase = {
+        workspace: body.workspace
+          ? {
+              ...current.workspace,
+              ...(body.workspace as Partial<SunmedxDatabase['workspace']>),
+              id: current.workspace.id,
+            }
+          : current.workspace,
+        leads: Array.isArray(body.leads)
+          ? (body.leads as SunmedxDatabase['leads'])
+          : current.leads,
+        approvals: Array.isArray(body.approvals)
+          ? (body.approvals as SunmedxDatabase['approvals'])
+          : current.approvals,
+        activities: Array.isArray(body.activities)
+          ? (body.activities as SunmedxDatabase['activities'])
+          : current.activities,
+        automations: Array.isArray(body.automations)
+          ? (body.automations as SunmedxDatabase['automations'])
+          : current.automations.length
+            ? current.automations
+            : base.automations,
+        channels: ensureCatalogChannels(
+          Array.isArray(body.channels)
+            ? (body.channels as SunmedxDatabase['channels'])
+            : current.channels
+        ),
+        campaigns: Array.isArray(body.campaigns)
+          ? (body.campaigns as SunmedxDatabase['campaigns'])
+          : current.campaigns,
+        content: Array.isArray(body.content)
+          ? (body.content as SunmedxDatabase['content'])
+          : current.content,
+        experiments: Array.isArray(body.experiments)
+          ? (body.experiments as SunmedxDatabase['experiments'])
+          : current.experiments,
+      };
+      await storage.save(next);
+      return json({ ok: true, state: next });
     }
 
     // Public brand config for /site
@@ -354,7 +414,7 @@ export async function handleApiRequest(
     // Channels
     if (method === 'GET' && pathname === '/api/channels') {
       const db = await storage.load();
-      let items = [...db.channels];
+      let items = ensureCatalogChannels(db.channels || []);
       if (url.searchParams.get('enabled') === 'true') {
         items = items.filter((c) => c.enabled);
       }
@@ -363,10 +423,17 @@ export async function handleApiRequest(
 
     if (method === 'GET' && pathname === '/api/channels/connections') {
       const db = await storage.load();
+      const channels = ensureCatalogChannels(db.channels || []);
       const map: Record<string, boolean> = {};
-      for (const ch of db.channels) {
+      for (const ch of channels) {
         if (ch.integration) {
-          map[ch.integration] = Boolean(ch.connected || ch.handle.trim());
+          map[ch.integration] = Boolean(
+            ch.connected ||
+              ch.handle?.trim() ||
+              ch.account_id?.trim() ||
+              ch.sender_email?.trim() ||
+              ch.wizard_completed
+          );
         }
       }
       return json(map);
@@ -374,15 +441,35 @@ export async function handleApiRequest(
 
     if (method === 'PUT' && pathname === '/api/channels/bulk') {
       const db = await storage.load();
+      db.channels = ensureCatalogChannels(db.channels || []);
       const body = await readBody(request);
       const incoming = Array.isArray(body.channels) ? body.channels : [];
       for (const rawRow of incoming) {
         const row = rawRow as Partial<(typeof db.channels)[number]>;
         const idx = db.channels.findIndex((c) => c.key === row.key);
+        const existing = idx >= 0 ? db.channels[idx] : undefined;
+        const handle = String(row.handle ?? existing?.handle ?? '');
+        const account_id = String(row.account_id ?? existing?.account_id ?? '');
+        const sender_email = String(row.sender_email ?? existing?.sender_email ?? '');
+        const secret_env_key = String(row.secret_env_key ?? existing?.secret_env_key ?? '');
+        const wizard_completed =
+          typeof row.wizard_completed === 'boolean'
+            ? row.wizard_completed
+            : existing?.wizard_completed || false;
         const connected =
-          row.kind === 'web' || Boolean(String(row.handle || '').trim());
+          (row.kind || existing?.kind) === 'web' ||
+          Boolean(handle.trim() || account_id.trim() || sender_email.trim() || wizard_completed);
         if (idx >= 0) {
-          db.channels[idx] = { ...db.channels[idx], ...row, connected };
+          db.channels[idx] = {
+            ...db.channels[idx],
+            ...row,
+            handle,
+            account_id,
+            sender_email,
+            secret_env_key,
+            wizard_completed,
+            connected,
+          };
         } else {
           db.channels.push({
             id: makeId('ch'),
@@ -390,7 +477,11 @@ export async function handleApiRequest(
             name: String(row.name || 'Channel'),
             kind: row.kind || 'social',
             integration: String(row.integration || ''),
-            handle: String(row.handle || ''),
+            handle,
+            account_id,
+            sender_email,
+            secret_env_key,
+            wizard_completed,
             automation_key: String(row.automation_key || 'nurture_sequence'),
             delay_days: Number(row.delay_days) || 0,
             cadence: String(row.cadence || ''),

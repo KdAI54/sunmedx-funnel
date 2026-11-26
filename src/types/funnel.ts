@@ -93,6 +93,10 @@ export interface Channel {
   kind: 'social' | 'email' | 'web';
   integration: string;
   handle: string;
+  account_id?: string;
+  sender_email?: string;
+  secret_env_key?: string;
+  wizard_completed?: boolean;
   automation_key: string;
   delay_days: number;
   cadence: string;

@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/Toast';
+import { hydrateServerFromMirrorIfEmpty } from './lib/api';
 import { RouterProvider, useRouter } from './lib/router';
 import { ActivityPage } from './pages/ActivityPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -35,7 +36,9 @@ interface OperatorSession {
 function loadSession(): OperatorSession | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
+    // Clear legacy persistent localStorage login so exiting the app cleanly returns to Login
+    window.localStorage.removeItem(SESSION_KEY);
+    const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<OperatorSession>;
     if (parsed && typeof parsed.email === 'string' && parsed.email.trim()) {
@@ -53,6 +56,19 @@ function loadSession(): OperatorSession | null {
 function AppRoutes() {
   const { pathname, search, navigate } = useRouter();
   const [operator, setOperator] = useState<OperatorSession | null>(loadSession);
+  const [hydrationRevision, setHydrationRevision] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    hydrateServerFromMirrorIfEmpty().then((restored) => {
+      if (active && restored) {
+        setHydrationRevision((n) => n + 1);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loginOperator = useCallback((name: string, email: string) => {
     const cleanEmail = email.trim().toLowerCase();
@@ -60,7 +76,7 @@ function AppRoutes() {
     const next = { name: cleanName, email: cleanEmail };
     setOperator(next);
     try {
-      window.localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
     } catch {
       // ignore storage failure
     }
@@ -69,16 +85,18 @@ function AppRoutes() {
   const logoutOperator = useCallback(() => {
     setOperator(null);
     try {
+      window.sessionStorage.removeItem(SESSION_KEY);
       window.localStorage.removeItem(SESSION_KEY);
     } catch {
       // ignore storage failure
     }
-    navigate({ to: '/' });
+    navigate({ to: '/login' });
   }, [navigate]);
 
   if (pathname === '/' || pathname === '' || pathname === '/site') {
     return (
       <SitePage
+        key={`site-${hydrationRevision}`}
         isLoggedIn={Boolean(operator)}
         operatorEmail={operator?.email}
       />
@@ -110,39 +128,44 @@ function AppRoutes() {
 
   let page: React.ReactNode;
   if (pathname === '/dashboard') {
-    page = <OverviewPage />;
+    page = <OverviewPage key={`ov-${hydrationRevision}`} />;
   } else if (pathname === '/board') {
-    page = <BoardPage />;
+    page = <BoardPage key={`bd-${hydrationRevision}`} />;
   } else if (pathname === '/leads') {
-    page = <LeadsPage />;
+    page = <LeadsPage key={`ld-${hydrationRevision}`} />;
   } else if (pathname.startsWith('/leads/')) {
     const leadId = pathname.slice('/leads/'.length).split('/')[0];
-    page = <LeadDetailPage leadId={decodeURIComponent(leadId)} />;
+    page = <LeadDetailPage key={`ldi-${hydrationRevision}`} leadId={decodeURIComponent(leadId)} />;
   } else if (pathname === '/activity') {
-    page = <ActivityPage />;
+    page = <ActivityPage key={`ac-${hydrationRevision}`} />;
   } else if (pathname === '/approvals') {
-    page = <ApprovalsPage />;
+    page = <ApprovalsPage key={`ap-${hydrationRevision}`} />;
   } else if (pathname === '/generator' || pathname === '/generator/') {
-    page = <GeneratorIndexPage />;
+    page = <GeneratorIndexPage key={`gi-${hydrationRevision}`} />;
   } else if (pathname.startsWith('/generator/')) {
     const campaignId = pathname.slice('/generator/'.length).split('/')[0];
-    page = <GeneratorDetailPage campaignId={decodeURIComponent(campaignId)} />;
+    page = (
+      <GeneratorDetailPage
+        key={`gd-${hydrationRevision}`}
+        campaignId={decodeURIComponent(campaignId)}
+      />
+    );
   } else if (pathname === '/automations') {
-    page = <AutomationsPage />;
+    page = <AutomationsPage key={`au-${hydrationRevision}`} />;
   } else if (pathname === '/channels') {
-    page = <ChannelsPage />;
+    page = <ChannelsPage key={`ch-${hydrationRevision}`} />;
   } else if (pathname === '/metrics') {
-    page = <MetricsPage />;
+    page = <MetricsPage key={`mt-${hydrationRevision}`} />;
   } else if (pathname === '/experiments') {
-    page = <ExperimentsPage />;
+    page = <ExperimentsPage key={`ex-${hydrationRevision}`} />;
   } else if (pathname === '/content') {
-    page = <ContentPage />;
+    page = <ContentPage key={`cn-${hydrationRevision}`} />;
   } else if (pathname === '/settings') {
-    page = <SettingsPage />;
+    page = <SettingsPage key={`st-${hydrationRevision}`} />;
   } else if (pathname === '/help') {
-    page = <HelpPage />;
+    page = <HelpPage key={`hp-${hydrationRevision}`} />;
   } else {
-    page = <OverviewPage />;
+    page = <OverviewPage key={`ov2-${hydrationRevision}`} />;
   }
 
   return (

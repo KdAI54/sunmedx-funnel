@@ -17,11 +17,23 @@
     "APP_URL": "https://sunmedx-funnel-autopilot.workers.dev"
   }
   // Secrets (set in Cloudflare Dashboard -> Settings -> Variables and Secrets,
-  // via `npx wrangler secret put GEMINI_API_KEY`, or in local `.dev.vars`):
+  // via `npx wrangler secret put <KEY>`, or in local `.dev.vars`):
   //   GEMINI_API_KEY
+  //   Platform tokens when activating live publishing/sending:
+  //   PINTEREST_ACCESS_TOKEN, INSTAGRAM_ACCESS_TOKEN, FACEBOOK_PAGE_TOKEN,
+  //   LINKEDIN_ACCESS_TOKEN, X_BEARER_TOKEN, TIKTOK_ACCESS_TOKEN, YOUTUBE_OAUTH_TOKEN,
+  //   BREVO_API_KEY, MAILCHIMP_API_KEY, KLAVIYO_API_KEY, KIT_API_KEY,
+  //   ACTIVECAMPAIGN_API_KEY, RESEND_API_KEY, GMAIL_OAUTH_TOKEN
   //
-  // Optional KV binding (Cloudflare Dashboard -> Settings -> Bindings -> KV Namespace):
+  // Persistent Storage Option A — Cloudflare KV (recommended simple JSON store):
+  //   Run `npx wrangler kv namespace create SUNMEDX_KV` and bind below or in Dashboard -> Bindings:
   // "kv_namespaces": [
   //   { "binding": "SUNMEDX_KV", "id": "YOUR_KV_NAMESPACE_ID" }
+  // ],
+  //
+  // Persistent Storage Option B — Cloudflare D1 (SQLite database at the edge):
+  //   Run `npx wrangler d1 create sunmedx-db` and bind below or in Dashboard -> Bindings:
+  // "d1_databases": [
+  //   { "binding": "SUNMEDX_DB", "database_name": "sunmedx-db", "database_id": "YOUR_D1_DATABASE_ID" }
   // ]
 }

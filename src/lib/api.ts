@@ -11,6 +11,138 @@ import type {
   WorkspaceSettings,
 } from '../types/funnel';
 
+export interface AppStateSnapshot {
+  workspace: WorkspaceSettings;
+  leads: Lead[];
+  approvals: Approval[];
+  activities: Activity[];
+  automations: Automation[];
+  channels: Channel[];
+  campaigns: Campaign[];
+  content: ContentPiece[];
+  experiments: Experiment[];
+}
+
+export interface HealthStatus {
+  ok: boolean;
+  service: string;
+  environment: string;
+  storage: string;
+  cloudflarePersistent?: boolean;
+  aiConfigured: boolean;
+}
+
+const MIRROR_KEY = 'sx-cloud-mirror-v1';
+
+interface StoredMirror {
+  state: AppStateSnapshot;
+  workspaceEdited?: boolean;
+  updatedAt: number;
+}
+
+function readMirror(): StoredMirror | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(MIRROR_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredMirror;
+    if (parsed && parsed.state && typeof parsed.state === 'object') {
+      return parsed;
+    }
+  } catch {
+    // ignore corrupt mirror
+  }
+  return null;
+}
+
+function writeMirror(state: AppStateSnapshot, workspaceEdited = false): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const prev = readMirror();
+    const payload: StoredMirror = {
+      state,
+      workspaceEdited: workspaceEdited || Boolean(prev?.workspaceEdited),
+      updatedAt: Date.now(),
+    };
+    window.localStorage.setItem(MIRROR_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function hasUserData(state: Partial<AppStateSnapshot> | null | undefined): boolean {
+  if (!state) return false;
+  const hasCollections =
+    (state.leads?.length || 0) > 0 ||
+    (state.campaigns?.length || 0) > 0 ||
+    (state.content?.length || 0) > 0 ||
+    (state.experiments?.length || 0) > 0 ||
+    (state.approvals?.length || 0) > 0 ||
+    (state.activities?.length || 0) > 0;
+  const hasConfiguredChannel = (state.channels || []).some(
+    (c) =>
+      c.kind !== 'web' &&
+      (c.connected ||
+        c.wizard_completed ||
+        Boolean(c.handle?.trim()) ||
+        Boolean(c.account_id?.trim()) ||
+        Boolean(c.sender_email?.trim()))
+  );
+  const hasAutoRuns = (state.automations || []).some((a) => (a.run_count || 0) > 0);
+  return hasCollections || hasConfiguredChannel || hasAutoRuns;
+}
+
+export async function syncMirrorFromServer(workspaceEdited = false): Promise<void> {
+  try {
+    const res = await fetch('/api/state', {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return;
+    const state = (await res.json()) as AppStateSnapshot;
+    writeMirror(state, workspaceEdited);
+  } catch {
+    // ignore transient offline error
+  }
+}
+
+let hydrationPromise: Promise<boolean> | null = null;
+
+export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if (hydrationPromise) return hydrationPromise;
+  hydrationPromise = (async () => {
+    try {
+      const mirror = readMirror();
+      const res = await fetch('/api/state', {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) return false;
+      const server = (await res.json()) as AppStateSnapshot;
+      const serverHasData = hasUserData(server);
+      const mirrorHasData =
+        Boolean(mirror?.state) &&
+        (hasUserData(mirror?.state) || Boolean(mirror?.workspaceEdited));
+
+      if (!serverHasData && mirrorHasData && mirror) {
+        const putRes = await fetch('/api/state', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mirror.state),
+        });
+        return putRes.ok;
+      }
+
+      if (serverHasData) {
+        writeMirror(server, Boolean(mirror?.workspaceEdited));
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  })();
+  return hydrationPromise;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -20,10 +152,26 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
   }
+  const method = (init?.method || 'GET').toUpperCase();
+  if (method !== 'GET' && url !== '/api/state') {
+    const workspaceEdited = url === '/api/workspace';
+    void syncMirrorFromServer(workspaceEdited);
+  }
   return data as T;
 }
 
 export const api = {
+  health: () => request<HealthStatus>('/api/health'),
+
+  state: {
+    get: () => request<AppStateSnapshot>('/api/state'),
+    restore: (snapshot: Partial<AppStateSnapshot>) =>
+      request<{ ok: boolean; state: AppStateSnapshot }>('/api/state', {
+        method: 'PUT',
+        body: JSON.stringify(snapshot),
+      }),
+  },
+
   brand: () =>
     request<{
       brand: {
