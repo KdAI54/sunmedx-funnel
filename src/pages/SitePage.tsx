@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CheckCircle2, MessageSquare, Send, X } from 'lucide-react';
+import { RisingSunBackdrop } from '../components/RisingSunBackdrop';
 import { SunmedxMark } from '../components/Shell';
 import { DEFAULT_WORKSPACE } from '../data/stages';
 import { api } from '../lib/api';
@@ -272,10 +273,11 @@ export function SitePage() {
 
   return (
     <div className="lp-root">
+      <RisingSunBackdrop />
       <div className="lp-wrap">
         <nav className="lp-nav">
           <Link to="/site" className="lp-brand">
-            <SunmedxMark width={24} height={24} />
+            <SunmedxMark width={30} height={30} />
             <span>Sunmedx</span>
           </Link>
           <div className="lp-nav-links">

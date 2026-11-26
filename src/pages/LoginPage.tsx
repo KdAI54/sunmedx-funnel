@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
+import { RisingSunBackdrop } from '../components/RisingSunBackdrop';
 import { SunmedxMark } from '../components/Shell';
 import { Link, useRouter } from '../lib/router';
 
@@ -27,9 +28,12 @@ export function LoginPage({
         padding: 20,
       }}
     >
+      <RisingSunBackdrop />
       <div
         className="sx-card"
         style={{
+          position: 'relative',
+          zIndex: 1,
           width: 'min(420px, 100%)',
           background: 'linear-gradient(180deg, #101930 0%, #0a1122 100%)',
           borderColor: 'rgba(59, 130, 246, 0.28)',
@@ -38,12 +42,12 @@ export function LoginPage({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <SunmedxMark className="as1-brand-mark" width={24} height={24} />
+          <SunmedxMark className="as1-brand-mark" width={30} height={30} />
           <span
             style={{
               fontFamily: '"Plus Jakarta Sans", sans-serif',
-              fontSize: 18,
-              fontWeight: 600,
+              fontSize: 20,
+              fontWeight: 700,
               letterSpacing: '-0.03em',
             }}
           >

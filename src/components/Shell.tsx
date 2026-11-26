@@ -139,12 +139,20 @@ export function SunmedxMark({
       className={className}
       width={width}
       height={height}
-      viewBox="0 0 29 29"
-      fill="currentColor"
+      style={width || height ? { width, height } : undefined}
+      viewBox="0 0 32 32"
+      fill="none"
       aria-hidden="true"
     >
-      <path d="M29 5.417C26.665 3.067 23.432 1.611 19.857 1.611 12.739 1.611 6.969 7.382 6.969 14.5s5.77 12.889 12.888 12.889c3.575 0 6.808-1.456 9.143-3.806V29H0V0h29v5.417Z" />
-      <rect x="16.113" y="11.278" width="6.445" height="6.445" />
+      <path
+        d="M3.5 2H28.5C29.6 2 30.2 3.2 29.5 4.1L23.5 11.7C23.1 12.2 22.5 12.5 21.9 12.5H10.1C9.5 12.5 8.9 12.2 8.5 11.7L2.5 4.1C1.8 3.2 2.4 2 3.5 2Z"
+        fill="#f97316"
+      />
+      <path
+        d="M10.8 14.8H21.2C22.2 14.8 22.8 15.9 22.2 16.7L18.7 22.2C18.3 22.7 17.8 23 17.2 23H14.8C14.2 23 13.7 22.7 13.3 22.2L9.8 16.7C9.2 15.9 9.8 14.8 10.8 14.8Z"
+        fill="#ef4444"
+      />
+      <circle cx="16" cy="27.2" r="3.4" fill="#f97316" />
     </svg>
   );
 }
