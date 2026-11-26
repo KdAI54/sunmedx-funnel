@@ -196,7 +196,13 @@ function ChatWidget({
   );
 }
 
-export function SitePage() {
+export function SitePage({
+  isLoggedIn = false,
+  operatorEmail,
+}: {
+  isLoggedIn?: boolean;
+  operatorEmail?: string;
+}) {
   const [brand, setBrand] = useState(DEFAULT_BRAND);
   const [activeStep, setActiveStep] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
@@ -206,6 +212,19 @@ export function SitePage() {
   const [capturing, setCapturing] = useState(false);
   const [capturedLeadEmail, setCapturedLeadEmail] = useState('');
   const emailInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Lead magnet form state
+  const [magnetName, setMagnetName] = useState('');
+  const [magnetEmail, setMagnetEmail] = useState('');
+  const [magnetGoal, setMagnetGoal] = useState('Fix 2 PM afternoon crash');
+  const [magnetTimeline, setMagnetTimeline] = useState('Starting this week');
+  const [magnetSubmitting, setMagnetSubmitting] = useState(false);
+  const [magnetError, setMagnetError] = useState('');
+  const [magnetUnlocked, setMagnetUnlocked] = useState<{
+    name: string;
+    email: string;
+    goal: string;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -264,35 +283,122 @@ export function SitePage() {
     }
   }
 
+  async function handleMagnetSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const cleanName = magnetName.trim();
+    const cleanEmail = magnetEmail.trim().toLowerCase();
+    if (!cleanName) {
+      setMagnetError('Please enter your name so we can personalize your blueprint.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setMagnetError('Please enter a valid email address.');
+      return;
+    }
+    setMagnetSubmitting(true);
+    setMagnetError('');
+    try {
+      const isUrgent = magnetTimeline === 'Starting this week';
+      await api.leads.create({
+        full_name: cleanName,
+        email: cleanEmail,
+        source: 'Lead magnet form',
+        interest: '30-Day Energy Blueprint',
+        stage: 'interest',
+        temperature: isUrgent ? 'hot' : 'warm',
+        score: isUrgent ? 78 : 62,
+        need_signal: magnetGoal,
+        timeline_signal: magnetTimeline,
+        notes: `Downloaded 30-Day Energy & Sleep Blueprint · Goal: ${magnetGoal}`,
+        next_action: 'Deliver 30-Day Blueprint & send tailored Day-1 follow-up',
+        last_touch: new Date().toISOString(),
+      });
+      setMagnetUnlocked({ name: cleanName, email: cleanEmail, goal: magnetGoal });
+    } catch {
+      setMagnetError('Could not deliver right now. Please try again in a moment.');
+    } finally {
+      setMagnetSubmitting(false);
+    }
+  }
+
+  function downloadBlueprintFile() {
+    if (!magnetUnlocked) return;
+    const content = [
+      'SUNMEDX · 30-DAY ENERGY & SLEEP PROTOCOL BLUEPRINT',
+      '===================================================',
+      `Prepared for: ${magnetUnlocked.name} (${magnetUnlocked.email})`,
+      `Primary Focus: ${magnetUnlocked.goal}`,
+      '',
+      'PHASE 1 · DAYS 1–7 (MORNING ANCHOR)',
+      '- Get 10 minutes of natural outdoor light within 30 minutes of waking.',
+      '- Delay first caffeine 60–90 minutes after waking to flatten the 2 PM crash.',
+      '- Pair hydration + electrolytes before your first meal.',
+      '',
+      'PHASE 2 · DAYS 8–18 (AFTERNOON RESCUE)',
+      '- Keep lunch balanced around 30g+ protein and low glycemic volatility.',
+      '- Take a 7-minute walk or sunlight reset around 1:30–2:30 PM.',
+      '',
+      'PHASE 3 · DAYS 19–30 (DEEP RECOVERY & AUDIT)',
+      '- Dim overhead blue light 90 minutes before target sleep.',
+      '- Complete your Day-30 Sunmedx check-in to refine your protocol stack.',
+      '',
+      'Questions? Reply to your Sunmedx advisor inside the landing chat anytime.',
+    ].join('\n');
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'sunmedx-30-day-energy-blueprint.txt';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function scrollToMagnet() {
+    const el = document.getElementById('lead-magnet');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
   function focusCapture() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => emailInputRef.current?.focus(), 220);
   }
 
   const currentBlueprint = FUNNEL_BLUEPRINT[activeStep] || FUNNEL_BLUEPRINT[0];
+  const dashboardTarget = isLoggedIn ? '/dashboard' : '/login';
 
   return (
     <div className="lp-root">
       <RisingSunBackdrop />
       <div className="lp-wrap">
         <nav className="lp-nav">
-          <Link to="/site" className="lp-brand">
+          <Link to="/" className="lp-brand">
             <SunmedxMark width={30} height={30} />
             <span>Sunmedx</span>
           </Link>
           <div className="lp-nav-links">
             <a href="#funnel">Funnel</a>
+            <a href="#lead-magnet">Lead Magnet</a>
             <a href="#offers">Offers</a>
             <a href="#how">How it works</a>
-            <Link to="/">Console</Link>
           </div>
-          <button
-            type="button"
-            className="lp-btn lp-btn-sm lp-btn-primary"
-            onClick={focusCapture}
-          >
-            Start Free Check-In
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Link to={dashboardTarget} className="lp-btn lp-btn-sm lp-btn-cobalt">
+              {isLoggedIn ? 'Open Dashboard' : 'Jump to Dashboard'}
+            </Link>
+            <button
+              type="button"
+              className="lp-btn lp-btn-sm lp-btn-primary"
+              onClick={scrollToMagnet}
+            >
+              Free Blueprint
+            </button>
+          </div>
         </nav>
 
         <header className="lp-hero">
@@ -437,6 +543,152 @@ export function SitePage() {
           </div>
         </header>
 
+        <section className="lp-magnet-section" id="lead-magnet">
+          <div className="lp-magnet-grid">
+            <div className="lp-magnet-copy">
+              <p className="lp-eyebrow">Free Lead Magnet · Instant Protocol Guide</p>
+              <h2 className="lp-magnet-title">
+                Download the 30-Day Energy &amp; Cortisol Reset Blueprint
+              </h2>
+              <p className="lp-magnet-sub">
+                Want to fix afternoon fatigue before booking a consult? Grab our structured 3-phase
+                daily playbook—customized to your top bottleneck and delivered right away.
+              </p>
+              <ul className="lp-magnet-list">
+                <li>
+                  <CheckCircle2 size={16} />
+                  <span>Morning light &amp; caffeine timing map to stabilize focus</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} />
+                  <span>2:00 PM crash rescue checklist without extra stimulants</span>
+                </li>
+                <li>
+                  <CheckCircle2 size={16} />
+                  <span>Day-30 reflection template synced with your Sunmedx intake</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="lp-magnet-card">
+              {magnetUnlocked ? (
+                <div className="lp-magnet-success">
+                  <div className="lp-magnet-success-head">
+                    <CheckCircle2 size={20} />
+                    <span>Blueprint unlocked for {magnetUnlocked.name}</span>
+                  </div>
+                  <p>
+                    We saved your intake for <strong>{magnetUnlocked.email}</strong> focused on{' '}
+                    <strong>{magnetUnlocked.goal}</strong>.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
+                    <button
+                      type="button"
+                      className="lp-btn lp-btn-primary"
+                      onClick={downloadBlueprintFile}
+                    >
+                      Download Blueprint (.txt) <ArrowRight size={15} />
+                    </button>
+                    <button
+                      type="button"
+                      className="lp-btn lp-btn-cobalt"
+                      onClick={() => {
+                        setSeededPrompt(
+                          `I just grabbed the 30-Day Blueprint for "${magnetUnlocked.goal}" (${magnetUnlocked.email}). What should my Day-1 step be?`
+                        );
+                        setChatOpen(true);
+                      }}
+                    >
+                      Ask Advisor
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleMagnetSubmit} noValidate>
+                  <div className="lp-magnet-card-head">
+                    <strong>Send me the free blueprint</strong>
+                    <span>Instant download · 0 spam</span>
+                  </div>
+
+                  <div className="lp-magnet-fields">
+                    <div className="lp-magnet-field">
+                      <label htmlFor="lm-name">Full name</label>
+                      <input
+                        id="lm-name"
+                        type="text"
+                        placeholder="Alex Rivera"
+                        value={magnetName}
+                        onChange={(e) => {
+                          setMagnetName(e.target.value);
+                          if (magnetError) setMagnetError('');
+                        }}
+                      />
+                    </div>
+
+                    <div className="lp-magnet-field">
+                      <label htmlFor="lm-email">Email address</label>
+                      <input
+                        id="lm-email"
+                        type="email"
+                        placeholder="alex@company.com"
+                        value={magnetEmail}
+                        onChange={(e) => {
+                          setMagnetEmail(e.target.value);
+                          if (magnetError) setMagnetError('');
+                        }}
+                      />
+                    </div>
+
+                    <div className="lp-magnet-row">
+                      <div className="lp-magnet-field">
+                        <label htmlFor="lm-goal">Primary goal</label>
+                        <select
+                          id="lm-goal"
+                          value={magnetGoal}
+                          onChange={(e) => setMagnetGoal(e.target.value)}
+                        >
+                          <option>Fix 2 PM afternoon crash</option>
+                          <option>Deeper uninterrupted sleep</option>
+                          <option>Steady morning focus</option>
+                          <option>Full 30-day metabolic reset</option>
+                        </select>
+                      </div>
+
+                      <div className="lp-magnet-field">
+                        <label htmlFor="lm-timeline">When to start</label>
+                        <select
+                          id="lm-timeline"
+                          value={magnetTimeline}
+                          onChange={(e) => setMagnetTimeline(e.target.value)}
+                        >
+                          <option>Starting this week</option>
+                          <option>Within 30 days</option>
+                          <option>Just exploring</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {magnetError && (
+                    <p role="alert" style={{ margin: '10px 0 0', fontSize: 12, color: '#fda4af' }}>
+                      {magnetError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="lp-btn lp-btn-primary"
+                    disabled={magnetSubmitting}
+                    style={{ width: '100%', marginTop: 16 }}
+                  >
+                    {magnetSubmitting ? 'Unlocking…' : 'Get Free Blueprint'} <ArrowRight size={15} />
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section id="offers" style={{ paddingTop: 12 }}>
           <h2 className="lp-section-title">Three ways to work with Sunmedx</h2>
           <p className="lp-section-note">
@@ -501,20 +753,16 @@ export function SitePage() {
               Ready to map your energy &amp; sleep protocol?
             </h2>
             <p className="lp-section-note" style={{ marginBottom: 0 }}>
-              Start your 2-minute intake or ask the Sunmedx advisor directly.
+              Start your 2-minute intake or jump straight into the operator dashboard.
             </p>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             <button type="button" className="lp-btn lp-btn-primary" onClick={focusCapture}>
               Get My Protocol <ArrowRight size={15} />
             </button>
-            <button
-              type="button"
-              className="lp-btn lp-btn-cobalt"
-              onClick={() => setChatOpen(true)}
-            >
-              Chat with Advisor
-            </button>
+            <Link to={dashboardTarget} className="lp-btn lp-btn-cobalt">
+              {isLoggedIn ? 'Open Dashboard' : 'Jump to Dashboard'}
+            </Link>
           </div>
         </section>
 
@@ -535,8 +783,10 @@ export function SitePage() {
             >
               Ask the advisor
             </button>
-            <Link to="/" style={{ color: '#94a8cc', textDecoration: 'none' }}>
-              Operator console
+            <Link to={dashboardTarget} style={{ color: '#94a8cc', textDecoration: 'none' }}>
+              {isLoggedIn && operatorEmail
+                ? `Dashboard (${operatorEmail})`
+                : 'Jump to dashboard'}
             </Link>
           </span>
         </footer>

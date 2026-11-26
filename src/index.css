@@ -2635,6 +2635,149 @@ body {
   line-height: 1.5;
 }
 
+.lp-magnet-section {
+  padding: 6px 0 56px;
+}
+.lp-magnet-grid {
+  border-radius: 18px;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  background: linear-gradient(135deg, rgba(16, 27, 54, 0.92) 0%, rgba(10, 17, 36, 0.96) 100%);
+  box-shadow: 0 28px 72px rgba(2, 6, 20, 0.56), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 28px;
+  display: grid;
+  gap: 28px;
+}
+@media (width >= 900px) {
+  .lp-magnet-grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    align-items: center;
+    gap: 40px;
+    padding: 36px;
+  }
+}
+.lp-magnet-title {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  letter-spacing: -0.03em;
+  margin: 10px 0 0;
+  font-size: clamp(1.5rem, 2.5vw, 2.05rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: #ffffff;
+  text-wrap: balance;
+}
+.lp-magnet-sub {
+  margin: 12px 0 0;
+  color: #b4c3de;
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 48ch;
+}
+.lp-magnet-list {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.lp-magnet-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: #e2e8f0;
+}
+.lp-magnet-list svg {
+  color: #fb923c;
+  flex-shrink: 0;
+}
+.lp-magnet-card {
+  background: rgba(8, 13, 27, 0.88);
+  border: 1px solid rgba(249, 115, 22, 0.28);
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 18px 44px rgba(2, 6, 18, 0.65);
+}
+.lp-magnet-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.lp-magnet-card-head strong {
+  font-family: "Plus Jakarta Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.lp-magnet-card-head span {
+  font-size: 11.5px;
+  color: #93c5fd;
+  font-weight: 500;
+}
+.lp-magnet-fields {
+  display: grid;
+  gap: 12px;
+}
+.lp-magnet-row {
+  display: grid;
+  gap: 12px;
+}
+@media (width >= 540px) {
+  .lp-magnet-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.lp-magnet-field {
+  display: grid;
+  gap: 6px;
+}
+.lp-magnet-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+.lp-magnet-field input,
+.lp-magnet-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(13, 21, 42, 0.94);
+  color: #ffffff;
+  font: inherit;
+  font-size: 13.5px;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.lp-magnet-field input::placeholder {
+  color: #64748b;
+}
+.lp-magnet-field input:focus,
+.lp-magnet-field select:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
+}
+.lp-magnet-success {
+  padding: 6px 2px;
+}
+.lp-magnet-success-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6ee7b7;
+  font-size: 15px;
+  font-weight: 700;
+}
+.lp-magnet-success p {
+  margin: 10px 0 0;
+  color: #cbd5e1;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
 .lp-offers {
   gap: 18px;
   padding: 26px 0 64px;

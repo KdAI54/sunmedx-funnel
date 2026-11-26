@@ -26,9 +26,9 @@ const NAV_SECTIONS: NavSection[] = [
     key: 'funnel',
     label: 'Funnel',
     icon: Layers,
-    target: '/',
+    target: '/dashboard',
     children: [
-      { label: 'Overview', to: '/' },
+      { label: 'Overview', to: '/dashboard' },
       { label: 'Funnel Board', to: '/board' },
       { label: 'Leads', to: '/leads' },
     ],
@@ -160,10 +160,12 @@ export function SunmedxMark({
 export function Shell({
   operatorEmail = 'operator@sunmedx.app',
   operatorName = 'Sunmedx Owner',
+  onSignOut,
   children,
 }: {
   operatorEmail?: string;
   operatorName?: string;
+  onSignOut?: () => void;
   children: React.ReactNode;
 }) {
   const { pathname, navigate } = useRouter();
@@ -370,10 +372,10 @@ export function Shell({
 
           <div className="as1-brand">
             <Link
-              to="/"
+              to="/dashboard"
               className="as1-brand-link"
               onClick={() => setDrawerOpen(false)}
-              aria-label="Sunmedx home"
+              aria-label="Sunmedx dashboard"
             >
               <SunmedxMark className="as1-brand-mark" />
               <span className="as1-brand-name">Sunmedx</span>
@@ -441,8 +443,8 @@ export function Shell({
                       <ul className="as1-submenu-body">
                         {sec.children.map((child) => {
                           const current =
-                            child.to === '/'
-                              ? pathname === '/'
+                            child.to === '/dashboard'
+                              ? pathname === '/dashboard'
                               : pathname === child.to || pathname.startsWith(`${child.to}/`);
                           return (
                             <li key={child.to}>
@@ -714,7 +716,7 @@ export function Shell({
               >
                 <span className="as1-pop-label">What&apos;s new</span>
               </Link>
-              <Link to="/site" className="as1-pop-row" role="menuitem" onClick={() => setPop(null)}>
+              <Link to="/" className="as1-pop-row" role="menuitem" onClick={() => setPop(null)}>
                 <span className="as1-pop-label">Public landing page</span>
               </Link>
             </div>
@@ -814,7 +816,7 @@ export function Shell({
               </Link>
               <span className="as1-pop-sep" role="separator" />
               <Link
-                to="/site"
+                to="/"
                 className="as1-pop-row"
                 role="menuitem"
                 onClick={() => setPop(null)}
@@ -829,6 +831,19 @@ export function Shell({
               >
                 <span className="as1-pop-label">Switch operator</span>
               </Link>
+              {onSignOut && (
+                <button
+                  type="button"
+                  className="as1-pop-row"
+                  role="menuitem"
+                  onClick={() => {
+                    setPop(null);
+                    onSignOut();
+                  }}
+                >
+                  <span className="as1-pop-label">Sign out</span>
+                </button>
+              )}
             </div>
           </div>
 
