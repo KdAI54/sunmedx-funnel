@@ -12,6 +12,7 @@ export interface SendEmailInput {
   toName?: string;
   subject: string;
   textBody: string;
+  htmlContent?: string;
   fromEmail?: string;
   fromName?: string;
 }
@@ -166,7 +167,7 @@ export async function sendTransactionalEmail(
           ],
           subject,
           textContent: textBody,
-          htmlContent: buildHtmlEmail(textBody, sender.name),
+          htmlContent: input.htmlContent?.trim() || buildHtmlEmail(textBody, sender.name),
         }),
       });
 
@@ -224,7 +225,7 @@ export async function sendTransactionalEmail(
           to: [toEmail],
           subject,
           text: textBody,
-          html: buildHtmlEmail(textBody, brandName),
+          html: input.htmlContent?.trim() || buildHtmlEmail(textBody, brandName),
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as {

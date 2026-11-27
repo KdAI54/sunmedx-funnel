@@ -195,3 +195,27 @@ export interface WorkspaceSettings {
   chat_greeting: string;
   offers: OfferItem[];
 }
+
+export type EmailTemplateCategory = 'brand_promo' | 'launch' | 'nurture' | 'winback';
+
+export type EmailTemplateTheme = 'sunrise' | 'midnight' | 'minimal';
+
+export interface EmailTemplate {
+  id: string;
+  name: string;
+  category: EmailTemplateCategory;
+  theme: EmailTemplateTheme;
+  subject: string;
+  preheader: string;
+  badge: string;
+  headline: string;
+  body: string;
+  offer_title?: string;
+  offer_price?: string;
+  cta_label: string;
+  cta_url: string;
+  footer_note: string;
+  created_date: string;
+  updated_date: string;
+}
+

@@ -14,6 +14,7 @@ import { AutomationsPage } from './pages/AutomationsPage';
 import { BoardPage } from './pages/BoardPage';
 import { ChannelsPage } from './pages/ChannelsPage';
 import { ContentPage } from './pages/ContentPage';
+import { EmailTemplatesPage } from './pages/EmailTemplatesPage';
 import { ExperimentsPage } from './pages/ExperimentsPage';
 import { GeneratorDetailPage } from './pages/GeneratorDetailPage';
 import { GeneratorIndexPage } from './pages/GeneratorIndexPage';
@@ -216,6 +217,8 @@ function AppRoutes() {
     page = <ActivityPage key={`ac-${hydrationRevision}`} />;
   } else if (pathname === '/approvals') {
     page = <ApprovalsPage key={`ap-${hydrationRevision}`} />;
+  } else if (pathname === '/email-templates') {
+    page = <EmailTemplatesPage key={`et-${hydrationRevision}`} />;
   } else if (pathname === '/generator' || pathname === '/generator/') {
     page = <GeneratorIndexPage key={`gi-${hydrationRevision}`} />;
   } else if (pathname.startsWith('/generator/')) {

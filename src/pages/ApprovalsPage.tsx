@@ -217,6 +217,9 @@ export function ApprovalsPage() {
         title="Nothing goes out without you"
         lede="The AI writes the pitch, the price and the objection replies. You read, edit if you like, and send via Brevo."
       >
+        <Link to="/email-templates" className="sx-btn sx-btn-ghost">
+          Brand promo templates
+        </Link>
         <Link to="/channels" className="sx-btn sx-btn-ghost">
           Email &amp; Channel Setup
         </Link>

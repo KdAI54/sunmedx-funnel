@@ -5,11 +5,15 @@ import type {
   Campaign,
   Channel,
   ContentPiece,
+  EmailTemplate,
+  EmailTemplateCategory,
+  EmailTemplateTheme,
   Experiment,
   Lead,
   OfferItem,
   WorkspaceSettings,
 } from '../types/funnel';
+import type { EmailTemplateDraft } from './email-template';
 
 export interface AppStateSnapshot {
   workspace: WorkspaceSettings;
@@ -199,7 +203,14 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const timeoutMs = url.startsWith('/api/ai/') ? 45000 : url === '/api/health' ? 8000 : 15000;
+  const timeoutMs =
+    url.startsWith('/api/ai/') ||
+    url === '/api/email-templates/generate' ||
+    url === '/api/email-templates/send'
+      ? 45000
+      : url === '/api/health'
+        ? 8000
+        : 15000;
   const res = await fetchWithTimeout(
     url,
     {
@@ -348,6 +359,55 @@ export const api = {
         senderEmail?: string;
         error?: string;
       }>('/api/email/test', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
+
+  emailTemplates: {
+    list: () => request<{ items: EmailTemplate[] }>('/api/email-templates'),
+    create: (body: EmailTemplateDraft) =>
+      request<EmailTemplate>('/api/email-templates', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: Partial<EmailTemplateDraft>) =>
+      request<EmailTemplate>(`/api/email-templates/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<{ ok: boolean; deleted: boolean; id: string }>(
+        `/api/email-templates/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      ),
+    generate: (body: {
+      goal: string;
+      category?: EmailTemplateCategory;
+      theme?: EmailTemplateTheme;
+    }) =>
+      request<{ draft: EmailTemplateDraft }>('/api/email-templates/generate', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    send: (body: {
+      templateId?: string;
+      template?: Partial<EmailTemplateDraft>;
+      toEmail?: string;
+      toName?: string;
+      audience?: 'all' | 'hot' | 'warm';
+      leadIds?: string[];
+      senderEmail?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        provider: string;
+        senderEmail?: string;
+        sentCount: number;
+        failedCount: number;
+        results: Array<{ email: string; ok: boolean; messageId?: string; error?: string }>;
+        error?: string;
+      }>('/api/email-templates/send', {
         method: 'POST',
         body: JSON.stringify(body),
       }),

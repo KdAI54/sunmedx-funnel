@@ -1,10 +1,24 @@
-import type { Campaign, ContentPiece, Lead } from '../src/types/funnel.ts';
+import type {
+  Campaign,
+  ContentPiece,
+  EmailTemplate,
+  Lead,
+} from '../src/types/funnel.ts';
+import {
+  createDefaultPromoTemplates,
+  personalizeTemplate,
+  renderPromoEmailHtml,
+  renderPromoEmailText,
+  sanitizeEmailUrl,
+  type EmailTemplateDraft,
+} from '../src/lib/email-template.ts';
 import {
   chatWithVisitorAI,
   designExperimentWithAI,
   draftApprovalWithAI,
   generateCampaignKitWithAI,
   generateContentPieceWithAI,
+  generatePromoEmailWithAI,
   judgeExperimentWithAI,
   runAutopilotCycle,
   scoreLeadWithAI,
@@ -159,6 +173,331 @@ export async function handleApiRequest(
       });
       await storage.save(db);
       return json(result, result.ok ? 200 : 200);
+    }
+
+    // Brand Promotion Email Templates (persisted in user_config under 'email_templates')
+    const loadEmailTemplates = async (db: SunmedxDatabase): Promise<EmailTemplate[]> => {
+      const stored = storage.getConfigValue
+        ? await storage.getConfigValue('email_templates')
+        : null;
+      if (Array.isArray(stored) && stored.length > 0) {
+        return stored as EmailTemplate[];
+      }
+      const defaults = createDefaultPromoTemplates(
+        db.workspace,
+        runtimeInfo?.appUrl || 'https://sunmedx-funnel.workers.dev'
+      );
+      if (storage.setConfigValue) {
+        await storage.setConfigValue('email_templates', defaults);
+      }
+      return defaults;
+    };
+
+    const saveEmailTemplates = async (items: EmailTemplate[]): Promise<void> => {
+      if (storage.setConfigValue) {
+        await storage.setConfigValue('email_templates', items);
+      }
+    };
+
+    if (method === 'GET' && pathname === '/api/email-templates') {
+      const db = await storage.load();
+      const items = await loadEmailTemplates(db);
+      return json({ items });
+    }
+
+    if (method === 'POST' && pathname === '/api/email-templates/generate') {
+      const db = await storage.load();
+      const body = await readBody(request);
+      const goal = String(body.goal || '').trim() || 'Introduce the Sunmedx 30-Day Energy Protocol';
+      const category =
+        body.category === 'launch' ||
+        body.category === 'nurture' ||
+        body.category === 'winback'
+          ? body.category
+          : 'brand_promo';
+      const theme =
+        body.theme === 'midnight' || body.theme === 'minimal' ? body.theme : 'sunrise';
+      const generated = await generatePromoEmailWithAI(
+        {
+          goal,
+          category,
+          theme,
+          appUrl: runtimeInfo?.appUrl || url.origin,
+        },
+        db.workspace,
+        geminiApiKey
+      );
+      return json({ draft: generated });
+    }
+
+    if (method === 'POST' && pathname === '/api/email-templates/send') {
+      const db = await storage.load();
+      db.channels = ensureCatalogChannels(db.channels || []);
+      const body = await readBody(request);
+      const templates = await loadEmailTemplates(db);
+      const savedTpl = body.templateId
+        ? templates.find((t) => t.id === String(body.templateId))
+        : undefined;
+      const inlineTpl =
+        body.template && typeof body.template === 'object'
+          ? (body.template as Partial<EmailTemplateDraft>)
+          : undefined;
+      const baseTpl: EmailTemplateDraft | undefined = inlineTpl
+        ? {
+            name: String(inlineTpl.name || savedTpl?.name || 'Brand Promotion'),
+            category: inlineTpl.category || savedTpl?.category || 'brand_promo',
+            theme: inlineTpl.theme || savedTpl?.theme || 'sunrise',
+            subject: String(inlineTpl.subject || savedTpl?.subject || ''),
+            preheader: String(inlineTpl.preheader || savedTpl?.preheader || ''),
+            badge: String(inlineTpl.badge || savedTpl?.badge || 'Brand Promotion'),
+            headline: String(inlineTpl.headline || savedTpl?.headline || ''),
+            body: String(inlineTpl.body || savedTpl?.body || ''),
+            offer_title:
+              inlineTpl.offer_title !== undefined
+                ? String(inlineTpl.offer_title)
+                : savedTpl?.offer_title,
+            offer_price:
+              inlineTpl.offer_price !== undefined
+                ? String(inlineTpl.offer_price)
+                : savedTpl?.offer_price,
+            cta_label: String(inlineTpl.cta_label || savedTpl?.cta_label || 'Learn more'),
+            cta_url: sanitizeEmailUrl(inlineTpl.cta_url || savedTpl?.cta_url || runtimeInfo?.appUrl),
+            footer_note: String(
+              inlineTpl.footer_note ||
+                savedTpl?.footer_note ||
+                `${db.workspace.brand || 'Sunmedx'} · Precision wellness protocols.`
+            ),
+          }
+        : savedTpl;
+
+      if (!baseTpl || !baseTpl.subject.trim() || !baseTpl.body.trim()) {
+        return json({ ok: false, error: 'Subject and email body are required.' }, 400);
+      }
+
+      const explicitSender = String(body.senderEmail || '').trim().toLowerCase();
+      const fromEmail = isValidEmail(explicitSender)
+        ? explicitSender
+        : resolveChannelSender(db.channels, emailRuntime);
+      const brandName = db.workspace.brand || 'Sunmedx';
+
+      type RecipientTarget = { email: string; name?: string; leadId?: string };
+      const targets: RecipientTarget[] = [];
+      const seenEmails = new Set<string>();
+
+      const singleEmail = String(body.toEmail || '').trim().toLowerCase();
+      if (singleEmail) {
+        if (!isValidEmail(singleEmail)) {
+          return json({ ok: false, error: 'Enter a valid recipient email address.' }, 400);
+        }
+        seenEmails.add(singleEmail);
+        targets.push({
+          email: singleEmail,
+          name: String(body.toName || '').trim() || undefined,
+        });
+      } else {
+        const leadIds = Array.isArray(body.leadIds)
+          ? new Set(body.leadIds.map((x) => String(x)))
+          : null;
+        const audience = String(body.audience || 'all');
+        const matchingLeads = db.leads.filter((l) => {
+          if (!isValidEmail(l.email)) return false;
+          if (leadIds && leadIds.size > 0) return leadIds.has(l.id);
+          if (audience === 'hot') return l.temperature === 'hot' || (l.score || 0) >= 70;
+          if (audience === 'warm') return l.temperature === 'warm';
+          return true;
+        });
+
+        for (const lead of matchingLeads) {
+          const em = lead.email.trim().toLowerCase();
+          if (seenEmails.has(em)) continue;
+          seenEmails.add(em);
+          targets.push({ email: em, name: lead.full_name, leadId: lead.id });
+          if (targets.length >= 25) break;
+        }
+      }
+
+      if (targets.length === 0) {
+        return json(
+          {
+            ok: false,
+            error:
+              'No recipients with valid emails found. Enter a test email or capture leads first.',
+          },
+          400
+        );
+      }
+
+      const now = new Date().toISOString();
+      const results: Array<{
+        email: string;
+        ok: boolean;
+        messageId?: string;
+        error?: string;
+      }> = [];
+      let sentCount = 0;
+      let failedCount = 0;
+      let activeProvider = 'none';
+      let activeSender = fromEmail;
+
+      for (const target of targets) {
+        const rawLocal = target.email.split('@')[0].split(/[._+-]/)[0] || '';
+        const guessedFirst = /^[a-z]{2,}$/i.test(rawLocal)
+          ? rawLocal.charAt(0).toUpperCase() + rawLocal.slice(1).toLowerCase()
+          : 'there';
+        const firstName = target.name
+          ? target.name.trim().split(/\s+/)[0]
+          : guessedFirst;
+        const personalized = personalizeTemplate(baseTpl, firstName);
+        const htmlContent = renderPromoEmailHtml(personalized, brandName);
+        const textBody = renderPromoEmailText(personalized, brandName);
+
+        const res = await sendTransactionalEmail(
+          {
+            toEmail: target.email,
+            toName: target.name,
+            subject: personalized.subject,
+            textBody,
+            htmlContent,
+            fromEmail,
+            fromName: brandName,
+          },
+          emailRuntime
+        );
+
+        activeProvider = res.provider || activeProvider;
+        if (res.senderEmail) activeSender = res.senderEmail;
+
+        if (res.ok) {
+          sentCount++;
+          results.push({ email: target.email, ok: true, messageId: res.messageId });
+          if (target.leadId) {
+            const lead = db.leads.find((l) => l.id === target.leadId);
+            if (lead) {
+              lead.last_touch = now;
+              lead.updated_date = now;
+            }
+          }
+        } else {
+          failedCount++;
+          results.push({ email: target.email, ok: false, error: res.error });
+        }
+      }
+
+      db.activities.unshift({
+        id: makeId('act'),
+        type: 'email',
+        summary:
+          sentCount > 0
+            ? `Brand promotion "${baseTpl.name}" sent to ${sentCount} recipient${sentCount === 1 ? '' : 's'} via ${activeProvider}`
+            : `Brand promotion "${baseTpl.name}" failed to send`,
+        detail:
+          sentCount > 0
+            ? `Subject: ${baseTpl.subject}${activeSender ? ` · From: ${activeSender}` : ''}${
+                failedCount ? ` · ${failedCount} failed` : ''
+              }`
+            : results[0]?.error || 'Email delivery failed',
+        status: 'done',
+        automated: false,
+        created_date: now,
+      });
+      await storage.save(db);
+
+      return json({
+        ok: sentCount > 0,
+        provider: activeProvider,
+        senderEmail: activeSender,
+        sentCount,
+        failedCount,
+        results,
+        error: sentCount === 0 ? results[0]?.error : undefined,
+      });
+    }
+
+    if (method === 'POST' && pathname === '/api/email-templates') {
+      const db = await storage.load();
+      const body = await readBody(request);
+      const templates = await loadEmailTemplates(db);
+      const now = new Date().toISOString();
+      const created: EmailTemplate = {
+        id: makeId('tpl'),
+        name: String(body.name || 'Untitled Brand Promo').trim(),
+        category:
+          body.category === 'launch' ||
+          body.category === 'nurture' ||
+          body.category === 'winback'
+            ? body.category
+            : 'brand_promo',
+        theme: body.theme === 'midnight' || body.theme === 'minimal' ? body.theme : 'sunrise',
+        subject: String(body.subject || `${db.workspace.brand || 'Sunmedx'} update`).trim(),
+        preheader: String(body.preheader || '').trim(),
+        badge: String(body.badge || 'Brand Promotion').trim(),
+        headline: String(body.headline || db.workspace.landing_headline || '').trim(),
+        body: String(body.body || '').trim(),
+        offer_title: body.offer_title ? String(body.offer_title).trim() : '',
+        offer_price: body.offer_price ? String(body.offer_price).trim() : '',
+        cta_label: String(body.cta_label || 'Explore the protocol').trim(),
+        cta_url: sanitizeEmailUrl(
+          String(body.cta_url || runtimeInfo?.appUrl || 'https://sunmedx-funnel.workers.dev')
+        ),
+        footer_note: String(
+          body.footer_note || `${db.workspace.brand || 'Sunmedx'} · Precision wellness protocols.`
+        ).trim(),
+        created_date: now,
+        updated_date: now,
+      };
+      const next = [created, ...templates];
+      await saveEmailTemplates(next);
+      return json(created, 201);
+    }
+
+    const emailTplMatch = pathname.match(/^\/api\/email-templates\/([^/]+)$/);
+    if (emailTplMatch) {
+      const tplId = decodeURIComponent(emailTplMatch[1]);
+      const db = await storage.load();
+      const templates = await loadEmailTemplates(db);
+      const idx = templates.findIndex((t) => t.id === tplId);
+
+      if (method === 'PATCH' || method === 'PUT') {
+        if (idx === -1) return json({ error: 'Template not found' }, 404);
+        const body = await readBody(request);
+        const cur = templates[idx];
+        const updated: EmailTemplate = {
+          ...cur,
+          ...(body.name !== undefined ? { name: String(body.name).trim() || cur.name } : {}),
+          ...(body.category === 'brand_promo' ||
+          body.category === 'launch' ||
+          body.category === 'nurture' ||
+          body.category === 'winback'
+            ? { category: body.category }
+            : {}),
+          ...(body.theme === 'sunrise' || body.theme === 'midnight' || body.theme === 'minimal'
+            ? { theme: body.theme }
+            : {}),
+          ...(body.subject !== undefined ? { subject: String(body.subject) } : {}),
+          ...(body.preheader !== undefined ? { preheader: String(body.preheader) } : {}),
+          ...(body.badge !== undefined ? { badge: String(body.badge) } : {}),
+          ...(body.headline !== undefined ? { headline: String(body.headline) } : {}),
+          ...(body.body !== undefined ? { body: String(body.body) } : {}),
+          ...(body.offer_title !== undefined ? { offer_title: String(body.offer_title) } : {}),
+          ...(body.offer_price !== undefined ? { offer_price: String(body.offer_price) } : {}),
+          ...(body.cta_label !== undefined ? { cta_label: String(body.cta_label) } : {}),
+          ...(body.cta_url !== undefined
+            ? { cta_url: sanitizeEmailUrl(String(body.cta_url)) }
+            : {}),
+          ...(body.footer_note !== undefined ? { footer_note: String(body.footer_note) } : {}),
+          updated_date: new Date().toISOString(),
+        };
+        const next = templates.map((t, i) => (i === idx ? updated : t));
+        await saveEmailTemplates(next);
+        return json(updated);
+      }
+
+      if (method === 'DELETE') {
+        if (idx === -1) return json({ error: 'Template not found' }, 404);
+        const next = templates.filter((t) => t.id !== tplId);
+        await saveEmailTemplates(next);
+        return json({ ok: true, deleted: true, id: tplId });
+      }
     }
 
     // Full state snapshot & restore for persistent cross-session mirror

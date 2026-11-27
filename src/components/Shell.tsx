@@ -41,6 +41,7 @@ const NAV_SECTIONS: NavSection[] = [
     children: [
       { label: 'Activity', to: '/activity' },
       { label: 'Approvals', to: '/approvals' },
+      { label: 'Email templates', to: '/email-templates' },
       { label: 'Lead engine', to: '/generator' },
       { label: 'Automations', to: '/automations' },
       { label: 'Accounts & wiring', to: '/channels' },

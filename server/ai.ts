@@ -749,3 +749,98 @@ assistant:`;
 
   return { reply, capturedLead };
 }
+
+export async function generatePromoEmailWithAI(
+  params: {
+    goal: string;
+    category?: 'brand_promo' | 'launch' | 'nurture' | 'winback';
+    theme?: 'sunrise' | 'midnight' | 'minimal';
+    appUrl?: string;
+  },
+  ws: WorkspaceSettings,
+  apiKey?: string
+): Promise<{
+  name: string;
+  category: 'brand_promo' | 'launch' | 'nurture' | 'winback';
+  theme: 'sunrise' | 'midnight' | 'minimal';
+  subject: string;
+  preheader: string;
+  badge: string;
+  headline: string;
+  body: string;
+  offer_title: string;
+  offer_price: string;
+  cta_label: string;
+  cta_url: string;
+  footer_note: string;
+}> {
+  const category = params.category || 'brand_promo';
+  const theme = params.theme || 'sunrise';
+  const brand = ws.brand || 'Sunmedx';
+  const offer = ws.offers?.[0];
+  const appUrl = params.appUrl || 'https://sunmedx-funnel.workers.dev';
+
+  const fallback = () => ({
+    name: `${brand} · ${params.goal.slice(0, 36)}`,
+    category,
+    theme,
+    subject: `${params.goal} — a calmer plan from ${brand}`,
+    preheader: `${ws.positioning} Built for ${ws.audience}.`,
+    badge:
+      category === 'launch'
+        ? 'New Release'
+        : category === 'winback'
+          ? 'Check-In Offer'
+          : 'Brand Promotion',
+    headline: params.goal.length > 10 ? params.goal : ws.landing_headline,
+    body: `Hi {{first_name}},\n\n${ws.pain}\n\n${brand} keeps it practical: ${ws.positioning} No bloated stack, no hype — just the daily sequence designed around ${params.goal.toLowerCase()}.\n\nClick below to explore the full plan and start this week.`,
+    offer_title: offer ? `${offer.name} — ${offer.promise}` : '30-Day Energy Reset Protocol',
+    offer_price: offer ? `$${offer.price}` : '$29',
+    cta_label: 'Explore the Protocol',
+    cta_url: appUrl,
+    footer_note: `${brand} · Sent via Brevo. Reply directly if you have any questions.`,
+  });
+
+  const prompt = `Write a high-converting brand promotion email template in JSON for ${brand}.
+Voice & tone: ${ws.tone}
+Positioning: ${ws.positioning}
+Audience: ${ws.audience}
+Offers: ${JSON.stringify(ws.offers)}
+Promotion goal / angle: ${params.goal}
+Category: ${category}
+
+Rules:
+- Use "{{first_name}}" in the greeting inside body.
+- Keep copy crisp, credible, and persuasion-focused without spammy hype.
+- Return strictly valid JSON with keys:
+{
+  "name": string (short internal template title),
+  "subject": string (compelling subject line under 65 chars),
+  "preheader": string (inbox preview line under 90 chars),
+  "badge": string (2-3 word eyebrow tag like "BRAND PROMOTION"),
+  "headline": string (strong hero headline),
+  "body": string (2-4 short paragraphs separated by \\n\\n),
+  "offer_title": string (featured offer & short promise),
+  "offer_price": string (e.g. "$29"),
+  "cta_label": string (2-4 word button label)
+}`;
+
+  const g = await generateJson(prompt, fallback, apiKey);
+  const fb = fallback();
+  return {
+    name: g.name || fb.name,
+    category,
+    theme,
+    subject: g.subject || fb.subject,
+    preheader: g.preheader || fb.preheader,
+    badge: g.badge || fb.badge,
+    headline: g.headline || fb.headline,
+    body: g.body || fb.body,
+    offer_title: g.offer_title || fb.offer_title,
+    offer_price: g.offer_price || fb.offer_price,
+    cta_label: g.cta_label || fb.cta_label,
+    cta_url: appUrl,
+    footer_note: fb.footer_note,
+  };
+}
+
