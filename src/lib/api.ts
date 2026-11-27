@@ -30,6 +30,12 @@ export interface HealthStatus {
   storage: string;
   cloudflarePersistent?: boolean;
   aiConfigured: boolean;
+  brevoConfigured?: boolean;
+  resendConfigured?: boolean;
+  emailConfigured?: boolean;
+  emailProvider?: 'brevo' | 'resend' | 'none';
+  senderEmailConfigured?: boolean;
+  brevoSenderEmail?: string;
 }
 
 const MIRROR_KEY = 'sx-cloud-mirror-v1';
@@ -219,13 +225,36 @@ export const api = {
         body: JSON.stringify(body),
       }),
     send: (id: string, body: { subject: string; body: string }) =>
-      request<{ ok: boolean; error?: string; approval?: Approval }>(
-        `/api/approvals/${encodeURIComponent(id)}/send`,
-        {
-          method: 'POST',
-          body: JSON.stringify(body),
-        }
-      ),
+      request<{
+        ok: boolean;
+        provider?: string;
+        messageId?: string;
+        senderEmail?: string;
+        error?: string;
+        approval?: Approval;
+      }>(`/api/approvals/${encodeURIComponent(id)}/send`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
+
+  email: {
+    test: (body: {
+      toEmail: string;
+      senderEmail?: string;
+      subject?: string;
+      body?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        provider: string;
+        messageId?: string;
+        senderEmail?: string;
+        error?: string;
+      }>('/api/email/test', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   },
 
   activities: {

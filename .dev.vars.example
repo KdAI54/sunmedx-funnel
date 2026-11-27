@@ -3,3 +3,8 @@ ENVIRONMENT="development"
 APP_NAME="Sunmedx · Funnel Autopilot"
 APP_URL="http://localhost:3000"
 GEMINI_API_KEY=""
+BREVO_API_KEY=""
+BREVO_SENDER_EMAIL=""
+BREVO_SENDER_NAME="Sunmedx"
+# Optional fallback only if you do NOT use Brevo:
+RESEND_API_KEY=""

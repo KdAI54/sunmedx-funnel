@@ -17,6 +17,8 @@ export function ExperimentsPage() {
     try {
       const res = await api.experiments.list();
       setItems(res.items || []);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

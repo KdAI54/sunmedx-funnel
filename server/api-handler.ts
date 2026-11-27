@@ -15,6 +15,13 @@ import {
   makeId,
   type SunmedxDatabase,
 } from './seed.ts';
+import {
+  isValidEmail,
+  resolveChannelSender,
+  sendTransactionalEmail,
+  syncBrevoContact,
+  type EmailRuntimeConfig,
+} from './email.ts';
 
 export interface DbAdapter {
   load(): Promise<SunmedxDatabase> | SunmedxDatabase;
@@ -47,6 +54,10 @@ export interface ApiRuntimeInfo {
   appName?: string;
   appUrl?: string;
   storage?: string;
+  brevoApiKey?: string;
+  brevoSenderEmail?: string;
+  brevoSenderName?: string;
+  resendApiKey?: string;
 }
 
 export async function handleApiRequest(
@@ -58,10 +69,18 @@ export async function handleApiRequest(
   const url = new URL(request.url);
   const pathname = url.pathname.replace(/\/+$/, '') || '/';
   const method = request.method.toUpperCase();
+  const emailRuntime: EmailRuntimeConfig = {
+    brevoApiKey: runtimeInfo?.brevoApiKey,
+    brevoSenderEmail: runtimeInfo?.brevoSenderEmail,
+    brevoSenderName: runtimeInfo?.brevoSenderName,
+    resendApiKey: runtimeInfo?.resendApiKey,
+  };
 
   try {
     if (method === 'GET' && pathname === '/api/health') {
       const activeStorage = runtimeInfo?.storage || 'local-json';
+      const brevoConfigured = Boolean(emailRuntime.brevoApiKey?.trim());
+      const resendConfigured = Boolean(emailRuntime.resendApiKey?.trim());
       return json({
         ok: true,
         service: 'sunmedx-funnel-autopilot',
@@ -70,7 +89,61 @@ export async function handleApiRequest(
         cloudflarePersistent:
           activeStorage === 'cloudflare-kv' || activeStorage === 'cloudflare-d1',
         aiConfigured: Boolean(geminiApiKey),
+        brevoConfigured,
+        resendConfigured,
+        emailConfigured: brevoConfigured || resendConfigured,
+        emailProvider: brevoConfigured ? 'brevo' : resendConfigured ? 'resend' : 'none',
+        senderEmailConfigured: isValidEmail(emailRuntime.brevoSenderEmail),
+        brevoSenderEmail: emailRuntime.brevoSenderEmail?.trim() || '',
       });
+    }
+
+    if (method === 'POST' && pathname === '/api/email/test') {
+      const db = await storage.load();
+      db.channels = ensureCatalogChannels(db.channels || []);
+      const body = await readBody(request);
+      const toEmail = String(body.toEmail || '').trim().toLowerCase();
+      if (!isValidEmail(toEmail)) {
+        return json({ ok: false, error: 'Enter a valid recipient email address.' }, 400);
+      }
+      const explicitSender = String(body.senderEmail || '').trim().toLowerCase();
+      const fromEmail = isValidEmail(explicitSender)
+        ? explicitSender
+        : resolveChannelSender(db.channels, emailRuntime);
+      const subject = String(
+        body.subject || `${db.workspace.brand || 'Sunmedx'} · Brevo test email`
+      ).trim();
+      const textBody = String(
+        body.body ||
+          `Your ${db.workspace.brand || 'Sunmedx'} funnel email connection is active and delivering via Brevo.\n\nReply-to and approvals are ready.`
+      ).trim();
+
+      const result = await sendTransactionalEmail(
+        {
+          toEmail,
+          subject,
+          textBody,
+          fromEmail,
+          fromName: db.workspace.brand || 'Sunmedx',
+        },
+        emailRuntime
+      );
+
+      db.activities.unshift({
+        id: makeId('act'),
+        type: 'email',
+        summary: result.ok
+          ? `Test email delivered to ${toEmail} via ${result.provider}`
+          : `Test email failed for ${toEmail}`,
+        detail: result.ok
+          ? `Sender: ${result.senderEmail || fromEmail} · ID: ${result.messageId || 'sent'}`
+          : result.error,
+        status: 'done',
+        automated: false,
+        created_date: new Date().toISOString(),
+      });
+      await storage.save(db);
+      return json(result, result.ok ? 200 : 200);
     }
 
     // Full state snapshot & restore for persistent cross-session mirror
@@ -214,6 +287,65 @@ export async function handleApiRequest(
         automated: false,
         created_date: now,
       });
+
+      if (isValidEmail(lead.email) && emailRuntime.brevoApiKey?.trim()) {
+        db.channels = ensureCatalogChannels(db.channels || []);
+        const brevoCh = db.channels.find((c) => c.key === 'brevo');
+        await syncBrevoContact(
+          {
+            email: lead.email,
+            fullName: lead.full_name,
+            source: lead.source,
+            interest: lead.interest,
+            listIdRaw: brevoCh?.account_id,
+          },
+          emailRuntime.brevoApiKey
+        );
+
+        if (
+          lead.source === 'Lead magnet form' ||
+          lead.source === 'Landing page'
+        ) {
+          const fromEmail = resolveChannelSender(db.channels, emailRuntime);
+          const isMagnet = lead.source === 'Lead magnet form';
+          const welcomeSubject = isMagnet
+            ? `${db.workspace.brand} · Your 30-Day Energy & Cortisol Reset Blueprint`
+            : `${db.workspace.brand} · Your 30-day energy protocol check-in`;
+          const welcomeBody = isMagnet
+            ? `Hi ${lead.full_name},\n\nThanks for requesting your 30-Day Energy & Cortisol Reset Blueprint (${lead.need_signal || 'steady energy'}).\n\nPhase 1 (Days 1–7): Get 10 minutes of natural morning light within 30 minutes of waking and delay first caffeine 60–90 minutes.\nPhase 2 (Days 8–18): Anchor lunch with 30g+ protein and a 7-minute afternoon reset walk.\nPhase 3 (Days 19–30): Dim overhead light 90 minutes before sleep.\n\nReply directly to this email anytime if you want a tailored recommendation.\n\n— ${db.workspace.brand}`
+            : `Hi ${lead.full_name},\n\nThanks for starting your ${db.workspace.brand} energy check-in. Your signals are logged and we'll follow up with your clearest next step shortly.\n\n— ${db.workspace.brand}`;
+
+          const mailRes = await sendTransactionalEmail(
+            {
+              toEmail: lead.email,
+              toName: lead.full_name,
+              subject: welcomeSubject,
+              textBody: welcomeBody,
+              fromEmail,
+              fromName: db.workspace.brand,
+            },
+            emailRuntime
+          );
+
+          db.activities.unshift({
+            id: makeId('act'),
+            lead_id: lead.id,
+            lead_name: lead.full_name,
+            stage: lead.stage,
+            type: 'email',
+            summary: mailRes.ok
+              ? `Welcome email delivered to ${lead.email} via ${mailRes.provider}`
+              : `Auto-welcome email skipped for ${lead.email}`,
+            detail: mailRes.ok
+              ? `${welcomeSubject} · ID: ${mailRes.messageId || 'sent'}`
+              : mailRes.error,
+            status: 'done',
+            automated: true,
+            created_date: new Date().toISOString(),
+          });
+        }
+      }
+
       await storage.save(db);
       return json(lead, 201);
     }
@@ -285,6 +417,50 @@ export async function handleApiRequest(
         });
       }
 
+      db.channels = ensureCatalogChannels(db.channels || []);
+      const fromEmail = resolveChannelSender(db.channels, emailRuntime);
+      const sendRes = await sendTransactionalEmail(
+        {
+          toEmail: item.lead_email,
+          toName: item.lead_name,
+          subject,
+          textBody: body,
+          fromEmail,
+          fromName: db.workspace.brand || 'Sunmedx',
+        },
+        emailRuntime
+      );
+
+      if (!sendRes.ok) {
+        db.approvals[idx] = {
+          ...item,
+          subject,
+          body,
+          status: 'failed',
+          send_error: sendRes.error,
+          updated_date: now,
+        };
+        db.activities.unshift({
+          id: makeId('act'),
+          lead_id: item.lead_id,
+          lead_name: item.lead_name,
+          stage: 'proposal',
+          type: 'email',
+          summary: `Email send failed for ${item.lead_name}`,
+          detail: sendRes.error || 'Provider rejected request',
+          status: 'done',
+          automated: false,
+          created_date: now,
+        });
+        await storage.save(db);
+        return json({
+          ok: false,
+          provider: sendRes.provider,
+          error: sendRes.error,
+          approval: db.approvals[idx],
+        });
+      }
+
       db.approvals[idx] = {
         ...item,
         subject,
@@ -308,15 +484,21 @@ export async function handleApiRequest(
         lead_name: item.lead_name,
         stage: lead?.stage || 'proposal',
         type: item.kind === 'proposal' ? 'proposal' : 'reply',
-        summary: `${item.kind === 'proposal' ? 'Offer' : 'Reply'} approved & sent to ${item.lead_name}`,
-        detail: subject,
+        summary: `${item.kind === 'proposal' ? 'Offer' : 'Reply'} approved & sent to ${item.lead_name} via ${sendRes.provider}`,
+        detail: `${subject}${sendRes.messageId ? ` · ID: ${sendRes.messageId}` : ''}`,
         status: 'done',
         automated: false,
         created_date: now,
       });
 
       await storage.save(db);
-      return json({ ok: true, approval: db.approvals[idx] });
+      return json({
+        ok: true,
+        provider: sendRes.provider,
+        messageId: sendRes.messageId,
+        senderEmail: sendRes.senderEmail,
+        approval: db.approvals[idx],
+      });
     }
 
     const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)$/);
@@ -427,8 +609,12 @@ export async function handleApiRequest(
       const map: Record<string, boolean> = {};
       for (const ch of channels) {
         if (ch.integration) {
+          const hasEnvKey =
+            (ch.integration === 'brevo' && Boolean(emailRuntime.brevoApiKey?.trim())) ||
+            (ch.integration === 'resend' && Boolean(emailRuntime.resendApiKey?.trim()));
           map[ch.integration] = Boolean(
-            ch.connected ||
+            hasEnvKey ||
+              ch.connected ||
               ch.handle?.trim() ||
               ch.account_id?.trim() ||
               ch.sender_email?.trim() ||

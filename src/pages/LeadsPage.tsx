@@ -246,6 +246,8 @@ export function LeadsPage() {
     try {
       const res = await api.leads.list('-created_date');
       setLeads(res.items || []);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

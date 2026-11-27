@@ -20,6 +20,8 @@ export function ContentPage() {
     try {
       const res = await api.content.list();
       setItems(res.items || []);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

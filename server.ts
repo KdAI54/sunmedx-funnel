@@ -49,6 +49,10 @@ async function startServer() {
         environment: process.env.NODE_ENV || 'development',
         appUrl: process.env.APP_URL,
         storage: 'local-json',
+        brevoApiKey: process.env.BREVO_API_KEY || process.env.BREVO_KEY,
+        brevoSenderEmail: process.env.BREVO_SENDER_EMAIL || process.env.SENDER_EMAIL,
+        brevoSenderName: process.env.BREVO_SENDER_NAME,
+        resendApiKey: process.env.RESEND_API_KEY,
       }
     );
 

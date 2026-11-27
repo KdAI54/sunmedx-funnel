@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   Mail,
   RefreshCw,
+  Send,
   Share2,
   Sliders,
   Upload,
@@ -102,6 +103,12 @@ export function ChannelsPage() {
   const [wizardDraft, setWizardDraft] = useState<ChannelConfig | null>(null);
   const [wizardError, setWizardError] = useState('');
   const [wizardSaving, setWizardSaving] = useState(false);
+  const [wizTestEmail, setWizTestEmail] = useState('');
+  const [wizTesting, setWizTesting] = useState(false);
+  const [wizTestResult, setWizTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -136,6 +143,8 @@ export function ChannelsPage() {
       }
       setConfig(next);
       setSavedOnce((chRes.items || []).length > 0);
+    } catch {
+      // Keep UI responsive on transient network failure
     } finally {
       setLoading(false);
     }
@@ -148,11 +157,10 @@ export function ChannelsPage() {
       setLive(map || {});
     } catch {
       setLive({});
-      toast.error('The connection check failed. Try again.');
     } finally {
       setChecking(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -207,6 +215,8 @@ export function ChannelsPage() {
     setWizardDraft({ ...current });
     setWizardStep(1);
     setWizardError('');
+    setWizTestEmail(current.sender_email || '');
+    setWizTestResult(null);
   }
 
   function closeWizard() {
@@ -214,22 +224,60 @@ export function ChannelsPage() {
     setWizardItem(null);
     setWizardDraft(null);
     setWizardError('');
+    setWizTestResult(null);
+  }
+
+  async function sendWizardTestEmail() {
+    const target = wizTestEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
+      setWizTestResult({ ok: false, message: 'Enter a valid recipient email address.' });
+      return;
+    }
+    setWizTesting(true);
+    setWizTestResult(null);
+    try {
+      const res = await api.email.test({
+        toEmail: target,
+        senderEmail: wizardDraft?.sender_email?.trim() || undefined,
+      });
+      if (res.ok) {
+        setWizTestResult({
+          ok: true,
+          message: `Delivered to ${target} via ${res.provider} (sender: ${
+            res.senderEmail || 'verified'
+          }${res.messageId ? ` · ID: ${res.messageId}` : ''})`,
+        });
+        toast.success(`Test email sent via ${res.provider}`);
+      } else {
+        setWizTestResult({
+          ok: false,
+          message: res.error || 'Email provider rejected the test send.',
+        });
+      }
+    } catch (err) {
+      setWizTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : 'Test send failed.',
+      });
+    } finally {
+      setWizTesting(false);
+    }
   }
 
   function nextWizardStep() {
     if (!wizardItem || !wizardDraft) return;
     if (wizardStep === 2) {
-      if (wizardItem.kind !== 'web' && !wizardDraft.handle.trim()) {
+      if (wizardItem.kind !== 'web' && !(wizardDraft.handle || '').trim()) {
         setWizardError(`Enter your ${wizardItem.handle_label.toLowerCase()} to continue.`);
         return;
       }
-      if (wizardItem.needs_sender_email && wizardDraft.sender_email.trim()) {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizardDraft.sender_email.trim())) {
+      if (wizardItem.needs_sender_email && (wizardDraft.sender_email || '').trim()) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((wizardDraft.sender_email || '').trim())) {
           setWizardError('Enter a valid sender email address.');
           return;
         }
       }
-      if (wizardItem.needs_sender_email && !wizardDraft.sender_email.trim()) {
+      if (wizardItem.needs_sender_email && !(wizardDraft.sender_email || '').trim()) {
         setWizardError('Enter the verified sender email address for this provider.');
         return;
       }
@@ -240,14 +288,14 @@ export function ChannelsPage() {
 
   async function completeWizard() {
     if (!wizardItem || !wizardDraft || wizardSaving) return;
-    if (wizardItem.kind !== 'web' && !wizardDraft.handle.trim()) {
+    if (wizardItem.kind !== 'web' && !(wizardDraft.handle || '').trim()) {
       setWizardError(`Enter your ${wizardItem.handle_label.toLowerCase()} first.`);
       setWizardStep(2);
       return;
     }
     if (
       wizardItem.needs_sender_email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wizardDraft.sender_email.trim())
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((wizardDraft.sender_email || '').trim())
     ) {
       setWizardError('Enter a valid verified sender email address.');
       setWizardStep(2);
@@ -258,9 +306,9 @@ export function ChannelsPage() {
     try {
       const completedDraft: ChannelConfig = {
         ...wizardDraft,
-        handle: wizardDraft.handle.trim(),
-        account_id: wizardDraft.account_id.trim(),
-        sender_email: wizardDraft.sender_email.trim().toLowerCase(),
+        handle: (wizardDraft.handle || '').trim(),
+        account_id: (wizardDraft.account_id || '').trim(),
+        sender_email: (wizardDraft.sender_email || '').trim().toLowerCase(),
         wizard_completed: true,
         enabled: true,
       };
@@ -339,9 +387,9 @@ export function ChannelsPage() {
       c.kind === 'web' ||
       Boolean(
         (live && live[c.integration]) ||
-          cfg?.handle.trim() ||
-          cfg?.account_id.trim() ||
-          cfg?.sender_email.trim() ||
+          cfg?.handle?.trim() ||
+          cfg?.account_id?.trim() ||
+          cfg?.sender_email?.trim() ||
           cfg?.wizard_completed
       )
     );
@@ -561,10 +609,10 @@ export function ChannelsPage() {
                   ch.kind === 'web' ||
                   Boolean(
                     (live && live[ch.integration]) ||
-                      cfg.handle.trim() ||
-                      cfg.account_id.trim() ||
-                      cfg.sender_email.trim() ||
-                      cfg.wizard_completed
+                      cfg?.handle?.trim() ||
+                      cfg?.account_id?.trim() ||
+                      cfg?.sender_email?.trim() ||
+                      cfg?.wizard_completed
                   );
                 return (
                   <div key={ch.key} className="lg-row lg-row-wizard">
@@ -574,6 +622,11 @@ export function ChannelsPage() {
                         <Badge tone={KIND_TONES[ch.kind]}>{ch.kind}</Badge>
                         {ch.kind !== 'web' && cfg.wizard_completed && (
                           <Badge tone="green">Wizard complete</Badge>
+                        )}
+                        {ch.key === 'brevo' && health && (
+                          <Badge tone={health.brevoConfigured ? 'green' : 'warm'}>
+                            {health.brevoConfigured ? 'Server key active' : 'BREVO_API_KEY missing'}
+                          </Badge>
                         )}
                       </div>
                       <p className="lg-hint">
@@ -872,12 +925,31 @@ export function ChannelsPage() {
                 {wizardItem.secret_env_key && (
                   <div className="sx-wiz-secret-box">
                     <div>
-                      <span className="sx-label" style={{ marginBottom: 3 }}>
-                        Cloudflare Worker Secret Key
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                        <span className="sx-label" style={{ marginBottom: 0 }}>
+                          Cloudflare Worker Runtime Secret
+                        </span>
+                        {wizardItem.key === 'brevo' && health && (
+                          <Badge tone={health.brevoConfigured ? 'green' : 'warm'}>
+                            {health.brevoConfigured ? 'Detected live' : 'Not detected on Worker'}
+                          </Badge>
+                        )}
+                        {wizardItem.key === 'resend' && health && (
+                          <Badge tone={health.resendConfigured ? 'green' : 'warm'}>
+                            {health.resendConfigured ? 'Detected live' : 'Not detected on Worker'}
+                          </Badge>
+                        )}
+                      </div>
                       <code className="sx-code" style={{ fontSize: 12.5 }}>
                         {wizardItem.secret_env_key}
                       </code>
+                      {(wizardItem.key === 'brevo' || wizardItem.key === 'resend') && (
+                        <p className="lg-hint" style={{ marginTop: 4 }}>
+                          {wizardItem.key === 'brevo'
+                            ? 'Add BREVO_API_KEY under Cloudflare Dashboard → Workers & Pages → Settings → Variables and Secrets (Runtime, not Build variables), then redeploy. RESEND_API_KEY is not needed for Brevo.'
+                            : 'Optional alternative if you do not use Brevo. Add under Cloudflare Dashboard → Workers & Pages → Settings → Variables and Secrets (Runtime), then redeploy.'}
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -1104,6 +1176,66 @@ export function ChannelsPage() {
                     </div>
                   )}
                 </div>
+
+                {(wizardItem.key === 'brevo' || wizardItem.key === 'resend') && (
+                  <div
+                    className="sx-wiz-secret-box"
+                    style={{ marginTop: 14, flexDirection: 'column', alignItems: 'stretch', gap: 10 }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <strong style={{ fontSize: 13 }}>Send live test email</strong>
+                      <Badge
+                        tone={
+                          (wizardItem.key === 'brevo'
+                            ? health?.brevoConfigured
+                            : health?.resendConfigured)
+                            ? 'green'
+                            : 'warm'
+                        }
+                      >
+                        {(wizardItem.key === 'brevo'
+                          ? health?.brevoConfigured
+                          : health?.resendConfigured)
+                          ? 'Worker key active'
+                          : 'Key missing in Runtime Secrets'}
+                      </Badge>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      <input
+                        type="email"
+                        className="sx-input"
+                        value={wizTestEmail}
+                        onChange={(e) => setWizTestEmail(e.target.value)}
+                        placeholder="Recipient email (e.g. you@gmail.com)"
+                        aria-label="Test recipient email"
+                        style={{ flex: '1 1 200px' }}
+                      />
+                      <button
+                        type="button"
+                        className="sx-btn sx-btn-cobalt sx-btn-sm"
+                        onClick={sendWizardTestEmail}
+                        disabled={wizTesting}
+                      >
+                        {wizTesting ? <LoaderCircle className="animate-spin" /> : <Send />}
+                        Send test
+                      </button>
+                    </div>
+                    {wizTestResult && (
+                      <p
+                        role={wizTestResult.ok ? 'status' : 'alert'}
+                        style={{
+                          margin: 0,
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                          color: wizTestResult.ok ? 'var(--sx-green-ink)' : 'var(--sx-red-ink)',
+                        }}
+                      >
+                        {wizTestResult.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <p className="lg-hint" style={{ marginTop: 10 }}>
                   Saving now marks <strong>{wizardItem.name}</strong> as configured and persists immediately across sessions.
                 </p>

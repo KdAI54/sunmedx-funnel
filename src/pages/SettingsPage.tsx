@@ -24,6 +24,7 @@ export function SettingsPage() {
           });
         }
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

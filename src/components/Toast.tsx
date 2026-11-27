@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { Check, X } from 'lucide-react';
 
 interface ToastItem {
@@ -27,9 +27,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const success = useCallback((m: string) => push('success', m), [push]);
   const error = useCallback((m: string) => push('error', m), [push]);
+  const value = useMemo(() => ({ success, error }), [success, error]);
 
   return (
-    <ToastContext.Provider value={{ success, error }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div
         aria-live="polite"

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import React, { Component, useCallback, useEffect, useState } from 'react';
 import { Shell } from './components/Shell';
 import { ToastProvider } from './components/Toast';
 import { hydrateServerFromMirrorIfEmpty } from './lib/api';
@@ -33,6 +33,74 @@ interface OperatorSession {
   email: string;
 }
 
+function safeDecode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+class RouteErrorBoundary extends Component<
+  { resetKey: string; onReset?: () => void; children: React.ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { resetKey: string; onReset?: () => void; children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return {
+      hasError: true,
+      message: error?.message || 'Unexpected view error',
+    };
+  }
+
+  componentDidUpdate(prevProps: { resetKey: string }) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, message: '' });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="sx-page">
+          <div className="sx-card" style={{ maxWidth: 560, margin: '36px auto' }}>
+            <h2 className="sx-card-title">This view hit a temporary issue</h2>
+            <p className="sx-card-note" style={{ marginTop: 8 }}>
+              {this.state.message}
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="sx-btn sx-btn-primary sx-btn-sm"
+                onClick={() => this.setState({ hasError: false, message: '' })}
+              >
+                Retry view
+              </button>
+              {this.props.onReset && (
+                <button
+                  type="button"
+                  className="sx-btn sx-btn-ghost sx-btn-sm"
+                  onClick={() => {
+                    this.setState({ hasError: false, message: '' });
+                    this.props.onReset?.();
+                  }}
+                >
+                  Back to Overview
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function loadSession(): OperatorSession | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -60,11 +128,13 @@ function AppRoutes() {
 
   useEffect(() => {
     let active = true;
-    hydrateServerFromMirrorIfEmpty().then((restored) => {
-      if (active && restored) {
-        setHydrationRevision((n) => n + 1);
-      }
-    });
+    hydrateServerFromMirrorIfEmpty()
+      .then((restored) => {
+        if (active && restored) {
+          setHydrationRevision((n) => n + 1);
+        }
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -95,11 +165,13 @@ function AppRoutes() {
 
   if (pathname === '/' || pathname === '' || pathname === '/site') {
     return (
-      <SitePage
-        key={`site-${hydrationRevision}`}
-        isLoggedIn={Boolean(operator)}
-        operatorEmail={operator?.email}
-      />
+      <RouteErrorBoundary resetKey={pathname}>
+        <SitePage
+          key={`site-${hydrationRevision}`}
+          isLoggedIn={Boolean(operator)}
+          operatorEmail={operator?.email}
+        />
+      </RouteErrorBoundary>
     );
   }
 
@@ -109,20 +181,24 @@ function AppRoutes() {
         ? search.next
         : '/dashboard';
     return (
-      <LoginPage
-        initialEmail={operator?.email || ''}
-        redirectTo={target}
-        onLogin={loginOperator}
-      />
+      <RouteErrorBoundary resetKey={pathname}>
+        <LoginPage
+          initialEmail={operator?.email || ''}
+          redirectTo={target}
+          onLogin={loginOperator}
+        />
+      </RouteErrorBoundary>
     );
   }
 
   if (!operator) {
     return (
-      <LoginPage
-        redirectTo={pathname.startsWith('/') ? pathname : '/dashboard'}
-        onLogin={loginOperator}
-      />
+      <RouteErrorBoundary resetKey={pathname}>
+        <LoginPage
+          redirectTo={pathname.startsWith('/') ? pathname : '/dashboard'}
+          onLogin={loginOperator}
+        />
+      </RouteErrorBoundary>
     );
   }
 
@@ -135,7 +211,7 @@ function AppRoutes() {
     page = <LeadsPage key={`ld-${hydrationRevision}`} />;
   } else if (pathname.startsWith('/leads/')) {
     const leadId = pathname.slice('/leads/'.length).split('/')[0];
-    page = <LeadDetailPage key={`ldi-${hydrationRevision}`} leadId={decodeURIComponent(leadId)} />;
+    page = <LeadDetailPage key={`ldi-${hydrationRevision}`} leadId={safeDecode(leadId)} />;
   } else if (pathname === '/activity') {
     page = <ActivityPage key={`ac-${hydrationRevision}`} />;
   } else if (pathname === '/approvals') {
@@ -147,7 +223,7 @@ function AppRoutes() {
     page = (
       <GeneratorDetailPage
         key={`gd-${hydrationRevision}`}
-        campaignId={decodeURIComponent(campaignId)}
+        campaignId={safeDecode(campaignId)}
       />
     );
   } else if (pathname === '/automations') {
@@ -174,7 +250,12 @@ function AppRoutes() {
       operatorEmail={operator.email}
       onSignOut={logoutOperator}
     >
-      {page}
+      <RouteErrorBoundary
+        resetKey={pathname}
+        onReset={() => navigate({ to: '/dashboard' })}
+      >
+        {page}
+      </RouteErrorBoundary>
     </Shell>
   );
 }

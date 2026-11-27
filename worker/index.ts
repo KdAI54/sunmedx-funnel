@@ -29,6 +29,12 @@ export interface Env {
   SUNMEDX_DB?: D1DatabaseLike;
   SUNMEDX_KV?: KvNamespaceLike;
   GEMINI_API_KEY?: string;
+  BREVO_API_KEY?: string;
+  BREVO_KEY?: string;
+  BREVO_SENDER_EMAIL?: string;
+  BREVO_SENDER_NAME?: string;
+  SENDER_EMAIL?: string;
+  RESEND_API_KEY?: string;
   APP_URL?: string;
   APP_NAME?: string;
   ENVIRONMENT?: string;
@@ -140,6 +146,10 @@ export default {
         appName: env.APP_NAME || 'Sunmedx · Funnel Autopilot',
         appUrl: env.APP_URL || url.origin,
         storage: storageMode,
+        brevoApiKey: env.BREVO_API_KEY || env.BREVO_KEY,
+        brevoSenderEmail: env.BREVO_SENDER_EMAIL || env.SENDER_EMAIL,
+        brevoSenderName: env.BREVO_SENDER_NAME,
+        resendApiKey: env.RESEND_API_KEY,
       });
     }
 

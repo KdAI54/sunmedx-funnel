@@ -25,6 +25,7 @@ export function ActivityPage() {
     api.activities
       .list({ limit: 120 })
       .then((res) => setItems(res.items || []))
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

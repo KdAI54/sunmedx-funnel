@@ -18,6 +18,8 @@ export function BoardPage() {
     try {
       const res = await api.leads.list('-score');
       setLeads(res.items || []);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

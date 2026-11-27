@@ -21,6 +21,8 @@ export function AutomationsPage() {
         (a, b) => order.indexOf(a.key) - order.indexOf(b.key)
       );
       setItems(list);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

@@ -53,6 +53,8 @@ export function GeneratorIndexPage() {
       ]);
       setKits(kitsRes.items || []);
       setWiredCount((chRes.items || []).length);
+    } catch {
+      // Keep UI responsive on transient fetch failure
     } finally {
       setLoading(false);
     }

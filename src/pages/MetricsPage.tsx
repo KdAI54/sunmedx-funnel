@@ -23,6 +23,7 @@ export function MetricsPage() {
         setActivity(acRes.items || []);
         setApprovals(apRes.items || []);
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 

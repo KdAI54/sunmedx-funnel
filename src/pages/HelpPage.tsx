@@ -146,9 +146,7 @@ export function HelpPage() {
             }}
             id="support"
           >
-            Email delivery to external addresses routes through your connected Gmail,
-            Mailchimp, or Klaviyo channels under Accounts &amp; wiring. Everything else
-            runs directly inside this workspace.
+            Email delivery routes directly through your Brevo connection (`BREVO_API_KEY` + verified sender) or your configured email provider under Accounts &amp; wiring. Everything else runs inside this workspace.
           </p>
           <div className="sx-actions" style={{ marginTop: 14 }}>
             <Link to="/" className="sx-btn sx-btn-ghost">
