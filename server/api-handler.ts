@@ -79,13 +79,30 @@ export async function handleApiRequest(
       const activeStorage = runtimeInfo?.storage || 'local-json';
       const brevoConfigured = Boolean(emailRuntime.brevoApiKey?.trim());
       const resendConfigured = Boolean(emailRuntime.resendApiKey?.trim());
+      let dbConnected = true;
+      let dbError = '';
+      if (storage.ping) {
+        const ping = await storage.ping();
+        dbConnected = ping.ok;
+        dbError = ping.error || '';
+      } else {
+        try {
+          await storage.load();
+        } catch (err) {
+          dbConnected = false;
+          dbError = err instanceof Error ? err.message : 'Storage load failed';
+        }
+      }
       return json({
-        ok: true,
+        ok: dbConnected,
         service: 'sunmedx-funnel-autopilot',
         environment: runtimeInfo?.environment || 'development',
         storage: activeStorage,
         cloudflarePersistent:
           activeStorage === 'cloudflare-kv' || activeStorage === 'cloudflare-d1',
+        dbConnected,
+        dbError: dbError || undefined,
+        checkedAt: new Date().toISOString(),
         aiConfigured: Boolean(geminiApiKey),
         brevoConfigured,
         resendConfigured,

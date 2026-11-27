@@ -12,7 +12,9 @@ interface AssetsFetcherLike {
 export interface Env {
   ASSETS: AssetsFetcherLike;
   SUNMEDX_DB?: D1DatabaseLike;
+  DB?: D1DatabaseLike;
   SUNMEDX_KV?: KvNamespaceLike;
+  KV?: KvNamespaceLike;
   GEMINI_API_KEY?: string;
   BREVO_API_KEY?: string;
   BREVO_KEY?: string;
@@ -23,6 +25,7 @@ export interface Env {
   APP_URL?: string;
   APP_NAME?: string;
   ENVIRONMENT?: string;
+  [key: string]: unknown;
 }
 
 export default {
@@ -33,19 +36,39 @@ export default {
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204 });
       }
-      const { adapter, storageMode } = createWorkerStorageAdapter(env);
-      return handleApiRequest(request, adapter, env.GEMINI_API_KEY, {
-        environment: env.ENVIRONMENT || 'production',
-        appName: env.APP_NAME || 'Sunmedx · Funnel Autopilot',
-        appUrl: env.APP_URL || url.origin,
-        storage: storageMode,
-        brevoApiKey: env.BREVO_API_KEY || env.BREVO_KEY,
-        brevoSenderEmail: env.BREVO_SENDER_EMAIL || env.SENDER_EMAIL,
-        brevoSenderName: env.BREVO_SENDER_NAME,
-        resendApiKey: env.RESEND_API_KEY,
-      });
+      try {
+        const { adapter, storageMode } = createWorkerStorageAdapter(env);
+        return await handleApiRequest(request, adapter, env.GEMINI_API_KEY, {
+          environment: env.ENVIRONMENT || 'production',
+          appName: env.APP_NAME || 'Sunmedx · Funnel Autopilot',
+          appUrl: env.APP_URL || url.origin,
+          storage: storageMode,
+          brevoApiKey: env.BREVO_API_KEY || env.BREVO_KEY,
+          brevoSenderEmail: env.BREVO_SENDER_EMAIL || env.SENDER_EMAIL,
+          brevoSenderName: env.BREVO_SENDER_NAME,
+          resendApiKey: env.RESEND_API_KEY,
+        });
+      } catch (err) {
+        return new Response(
+          JSON.stringify({
+            error: err instanceof Error ? err.message : 'Worker API error',
+          }),
+          {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-store',
+            },
+          }
+        );
+      }
     }
 
-    return env.ASSETS.fetch(request);
+    try {
+      return await env.ASSETS.fetch(request);
+    } catch {
+      const indexUrl = new URL('/index.html', url.origin);
+      return env.ASSETS.fetch(new Request(indexUrl.toString(), request));
+    }
   },
 };

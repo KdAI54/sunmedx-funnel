@@ -89,6 +89,8 @@ export function LeadDetailPage({ leadId }: { leadId: string }) {
       });
       await load();
       toast.success('Marked won. Onboarding logged.');
+    } catch {
+      toast.error('Could not mark won. Try again.');
     } finally {
       setBusy('');
     }

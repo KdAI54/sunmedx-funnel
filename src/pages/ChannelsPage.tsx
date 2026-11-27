@@ -91,6 +91,7 @@ export function ChannelsPage() {
   );
   const [live, setLive] = useState<Record<string, boolean> | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [checkingHealth, setCheckingHealth] = useState(false);
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
@@ -161,6 +162,25 @@ export function ChannelsPage() {
       setChecking(false);
     }
   }, []);
+
+  const checkStorageStatus = useCallback(async () => {
+    setCheckingHealth(true);
+    try {
+      const status = await api.health();
+      setHealth(status);
+      if (status.dbConnected === false) {
+        toast.error(status.dbError || 'Database connection check failed');
+      } else if (status.storage === 'cloudflare-d1') {
+        toast.success('Cloudflare D1 is connected and healthy');
+      } else {
+        toast.success(`Active storage: ${storageLabel(status.storage)}`);
+      }
+    } catch {
+      toast.error('Could not reach /api/health');
+    } finally {
+      setCheckingHealth(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     load();
@@ -422,15 +442,37 @@ export function ChannelsPage() {
         <div className="sx-storage-banner-main">
           <Database size={16} />
           <div>
-            <strong>Active persistence: {storageLabel(health?.storage)}</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <strong>Active persistence: {storageLabel(health?.storage)}</strong>
+              {health && (
+                <Badge tone={health.dbConnected === false ? 'red' : health.cloudflarePersistent ? 'green' : 'blue'}>
+                  {health.dbConnected === false
+                    ? 'DB Error'
+                    : health.cloudflarePersistent
+                      ? 'D1/KV Live'
+                      : 'Local / Preview'}
+                </Badge>
+              )}
+            </div>
             <span>
-              {health?.cloudflarePersistent
-                ? 'Edge persistence is active on Cloudflare — all leads, wizards, campaigns, and settings save permanently.'
-                : 'Changes auto-mirror cleanly in this browser across exits. Bind SUNMEDX_KV or SUNMEDX_DB in Cloudflare for shared multi-device edge storage.'}
+              {health?.dbError
+                ? `Database error: ${health.dbError}`
+                : health?.cloudflarePersistent
+                  ? 'Edge persistence is active on Cloudflare — all leads, wizards, campaigns, and settings save permanently.'
+                  : 'Changes auto-mirror cleanly in this browser across exits. Bind SUNMEDX_DB (or DB) in Cloudflare Worker Bindings and redeploy for edge persistence.'}
             </span>
           </div>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <button
+            type="button"
+            className="sx-btn sx-btn-ghost sx-btn-sm"
+            onClick={checkStorageStatus}
+            disabled={checkingHealth}
+          >
+            {checkingHealth ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}
+            Check D1 status
+          </button>
           <button
             type="button"
             className="sx-btn sx-btn-ghost sx-btn-sm"

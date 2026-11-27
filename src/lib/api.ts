@@ -29,6 +29,9 @@ export interface HealthStatus {
   environment: string;
   storage: string;
   cloudflarePersistent?: boolean;
+  dbConnected?: boolean;
+  dbError?: string;
+  checkedAt?: string;
   aiConfigured: boolean;
   brevoConfigured?: boolean;
   resendConfigured?: boolean;
@@ -98,11 +101,33 @@ function hasUserData(state: Partial<AppStateSnapshot> | null | undefined): boole
   return hasCollections || hasConfiguredChannel || hasAutoRuns;
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = 15000
+): Promise<Response> {
+  if (typeof AbortController === 'undefined') {
+    return fetch(url, init);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init?.signal || controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function syncMirrorFromServer(workspaceEdited = false): Promise<void> {
   try {
-    const res = await fetch('/api/state', {
-      headers: { 'Content-Type': 'application/json' },
-    });
+    const res = await fetchWithTimeout(
+      '/api/state',
+      { headers: { 'Content-Type': 'application/json' } },
+      10000
+    );
     if (!res.ok) return;
     const state = (await res.json()) as AppStateSnapshot;
     writeMirror(state, workspaceEdited);
@@ -120,8 +145,16 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
     try {
       const mirror = readMirror();
       const [healthRes, res] = await Promise.all([
-        fetch('/api/health', { headers: { 'Content-Type': 'application/json' } }).catch(() => null),
-        fetch('/api/state', { headers: { 'Content-Type': 'application/json' } }),
+        fetchWithTimeout(
+          '/api/health',
+          { headers: { 'Content-Type': 'application/json' } },
+          8000
+        ).catch(() => null),
+        fetchWithTimeout(
+          '/api/state',
+          { headers: { 'Content-Type': 'application/json' } },
+          10000
+        ),
       ]);
       if (!res.ok) return false;
       const health = healthRes?.ok
@@ -141,11 +174,15 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
         (hasUserData(mirror?.state) || Boolean(mirror?.workspaceEdited));
 
       if (!serverHasData && mirrorHasData && mirror) {
-        const putRes = await fetch('/api/state', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mirror.state),
-        });
+        const putRes = await fetchWithTimeout(
+          '/api/state',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mirror.state),
+          },
+          10000
+        );
         return putRes.ok;
       }
 
@@ -154,6 +191,7 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
       }
       return false;
     } catch {
+      hydrationPromise = null;
       return false;
     }
   })();
@@ -161,10 +199,15 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-    ...init,
-  });
+  const timeoutMs = url.startsWith('/api/ai/') ? 45000 : url === '/api/health' ? 8000 : 15000;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+      ...init,
+    },
+    timeoutMs
+  );
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);

@@ -70,8 +70,12 @@ export function ExperimentsPage() {
             b_visits: (exp.b_visits || 0) + 20,
             b_conversions: (exp.b_conversions || 0) + 4,
           };
-    const updated = await api.experiments.update(exp.id, patch);
-    setItems((prev) => prev.map((x) => (x.id === exp.id ? updated : x)));
+    try {
+      const updated = await api.experiments.update(exp.id, patch);
+      setItems((prev) => prev.map((x) => (x.id === exp.id ? updated : x)));
+    } catch {
+      toast.error('Could not log visits. Try again.');
+    }
   }
 
   return (

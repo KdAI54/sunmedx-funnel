@@ -10,6 +10,17 @@ import { loadDb, saveDb } from './server/store.ts';
 const nodeDbAdapter: DbAdapter = {
   load: () => loadDb(),
   save: (db) => saveDb(db),
+  ping: async () => {
+    try {
+      loadDb();
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Local DB read failed',
+      };
+    }
+  },
   getConfigValue: async (key) => {
     const db = loadDb();
     const map = db.custom_config || {};

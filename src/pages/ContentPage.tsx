@@ -56,8 +56,12 @@ export function ContentPage() {
     if (nextStatus === 'scheduled') {
       patch.scheduled_for = new Date(Date.now() + 86400000).toISOString();
     }
-    const updated = await api.content.update(piece.id, patch);
-    setItems((prev) => prev.map((x) => (x.id === piece.id ? updated : x)));
+    try {
+      const updated = await api.content.update(piece.id, patch);
+      setItems((prev) => prev.map((x) => (x.id === piece.id ? updated : x)));
+    } catch {
+      toast.error('Could not update piece status. Try again.');
+    }
   }
 
   return (
