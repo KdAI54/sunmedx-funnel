@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sunmedx-funnel-autopilot",
+  "name": "sunmedx-funnel",
   "main": "worker/index.ts",
   "compatibility_date": "2025-12-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -14,7 +14,7 @@
   "vars": {
     "ENVIRONMENT": "production",
     "APP_NAME": "Sunmedx · Funnel Autopilot",
-    "APP_URL": "https://sunmedx-funnel-autopilot.workers.dev"
+    "APP_URL": "https://sunmedx-funnel.workers.dev"
   }
   // Secrets (set in Cloudflare Dashboard -> Settings -> Variables and Secrets,
   // via `npx wrangler secret put <KEY>`, or in local `.dev.vars`):
