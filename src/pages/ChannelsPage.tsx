@@ -461,13 +461,39 @@ export function ChannelsPage() {
       {showCloudflareGuide && (
         <div style={{ marginBottom: 22 }}>
           <Card
-            title="How data is stored in Cloudflare (no Firebase needed)"
-            note="Your Cloudflare Worker already supports both Cloudflare D1 (SQLite) and Cloudflare Workers KV out of the box in worker/index.ts."
+            title="How data is stored in Cloudflare D1 (no memory state)"
+            note="Your Cloudflare Worker uses server/d1-storage.ts to persist user_config, funnel_activities, and full funnel state directly in Cloudflare D1 SQLite."
           >
             <div className="sx-cf-grid">
               <div className="sx-cf-box">
                 <div className="sx-cf-head">
-                  <strong>Option A · Cloudflare Workers KV (Fastest setup)</strong>
+                  <strong>Option A · Cloudflare D1 (Recommended SQLite DB)</strong>
+                  <Badge tone="teal">SUNMEDX_DB</Badge>
+                </div>
+                <ol className="sx-cf-steps">
+                  <li>
+                    Run in your terminal:{' '}
+                    <code className="sx-code">npx wrangler d1 create sunmedx-db</code>
+                  </li>
+                  <li>
+                    In Cloudflare Dashboard, go to <strong>Workers &amp; Pages -&gt; sunmedx-funnel -&gt; Settings -&gt; Bindings</strong>, click <strong>Add -&gt; D1 Database</strong>, set Variable name <code className="sx-code">SUNMEDX_DB</code>.
+                  </li>
+                  <li>
+                    <code className="sx-code">server/d1-storage.ts</code> automatically creates <code className="sx-code">user_config</code>, <code className="sx-code">funnel_activities</code>, and <code className="sx-code">sunmedx_state</code> (or run <code className="sx-code">migrations/0001_init.sql</code>).
+                  </li>
+                </ol>
+                <button
+                  type="button"
+                  className="sx-btn sx-btn-ghost sx-btn-sm"
+                  onClick={() => copyText('npx wrangler d1 create sunmedx-db', 'D1 command')}
+                >
+                  <Copy /> Copy D1 command
+                </button>
+              </div>
+
+              <div className="sx-cf-box">
+                <div className="sx-cf-head">
+                  <strong>Option B · Cloudflare Workers KV (Alternative)</strong>
                   <Badge tone="blue">SUNMEDX_KV</Badge>
                 </div>
                 <ol className="sx-cf-steps">
@@ -476,10 +502,10 @@ export function ChannelsPage() {
                     <code className="sx-code">npx wrangler kv namespace create SUNMEDX_KV</code>
                   </li>
                   <li>
-                    In Cloudflare Dashboard, go to <strong>Workers &amp; Pages -&gt; sunmedx-funnel-autopilot -&gt; Settings -&gt; Bindings</strong>, click <strong>Add -&gt; KV Namespace</strong>, set Variable name <code className="sx-code">SUNMEDX_KV</code>.
+                    In Cloudflare Dashboard -&gt; <strong>sunmedx-funnel -&gt; Settings -&gt; Bindings</strong>, add a <strong>KV Namespace</strong> binding named <code className="sx-code">SUNMEDX_KV</code>.
                   </li>
                   <li>
-                    Or paste the generated namespace ID into <code className="sx-code">wrangler.jsonc</code> under <code className="sx-code">kv_namespaces</code> and redeploy.
+                    Or paste the generated namespace ID into <code className="sx-code">wrangler.jsonc</code> and redeploy.
                   </li>
                 </ol>
                 <button
@@ -490,32 +516,6 @@ export function ChannelsPage() {
                   }
                 >
                   <Copy /> Copy KV command
-                </button>
-              </div>
-
-              <div className="sx-cf-box">
-                <div className="sx-cf-head">
-                  <strong>Option B · Cloudflare D1 (Relational SQLite)</strong>
-                  <Badge tone="teal">SUNMEDX_DB</Badge>
-                </div>
-                <ol className="sx-cf-steps">
-                  <li>
-                    Run in your terminal:{' '}
-                    <code className="sx-code">npx wrangler d1 create sunmedx-db</code>
-                  </li>
-                  <li>
-                    In Cloudflare Dashboard -&gt; <strong>Settings -&gt; Bindings</strong>, add a <strong>D1 Database</strong> binding named <code className="sx-code">SUNMEDX_DB</code>.
-                  </li>
-                  <li>
-                    No SQL migration required — <code className="sx-code">worker/index.ts</code> automatically creates <code className="sx-code">sunmedx_state</code> on first request and persists every change.
-                  </li>
-                </ol>
-                <button
-                  type="button"
-                  className="sx-btn sx-btn-ghost sx-btn-sm"
-                  onClick={() => copyText('npx wrangler d1 create sunmedx-db', 'D1 command')}
-                >
-                  <Copy /> Copy D1 command
                 </button>
               </div>
             </div>

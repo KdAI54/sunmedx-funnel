@@ -20,6 +20,7 @@ export interface SunmedxDatabase {
   campaigns: Campaign[];
   content: ContentPiece[];
   experiments: Experiment[];
+  custom_config?: Record<string, unknown>;
 }
 
 export function createInitialDb(): SunmedxDatabase {

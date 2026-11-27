@@ -3,12 +3,34 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
-import { handleApiRequest, type DbAdapter } from './server/api-handler.ts';
+import { handleApiRequest } from './server/api-handler.ts';
+import type { DbAdapter } from './server/d1-storage.ts';
 import { loadDb, saveDb } from './server/store.ts';
 
 const nodeDbAdapter: DbAdapter = {
   load: () => loadDb(),
   save: (db) => saveDb(db),
+  getConfigValue: async (key) => {
+    const db = loadDb();
+    const map = db.custom_config || {};
+    return key in map ? map[key] : null;
+  },
+  setConfigValue: async (key, value) => {
+    const db = loadDb();
+    db.custom_config = { ...(db.custom_config || {}), [key]: value };
+    saveDb(db);
+  },
+  deleteConfigValue: async (key) => {
+    const db = loadDb();
+    if (!db.custom_config || !(key in db.custom_config)) return false;
+    delete db.custom_config[key];
+    saveDb(db);
+    return true;
+  },
+  listAllCustomConfig: async () => {
+    const db = loadDb();
+    return { ...(db.custom_config || {}) };
+  },
 };
 
 async function startServer() {

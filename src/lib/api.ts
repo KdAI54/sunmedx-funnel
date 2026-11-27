@@ -119,11 +119,22 @@ export function hydrateServerFromMirrorIfEmpty(): Promise<boolean> {
   hydrationPromise = (async () => {
     try {
       const mirror = readMirror();
-      const res = await fetch('/api/state', {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const [healthRes, res] = await Promise.all([
+        fetch('/api/health', { headers: { 'Content-Type': 'application/json' } }).catch(() => null),
+        fetch('/api/state', { headers: { 'Content-Type': 'application/json' } }),
+      ]);
       if (!res.ok) return false;
+      const health = healthRes?.ok
+        ? ((await healthRes.json().catch(() => null)) as HealthStatus | null)
+        : null;
       const server = (await res.json()) as AppStateSnapshot;
+
+      // When Cloudflare D1 or KV is bound, server persistence is authoritative across refreshes
+      if (health?.cloudflarePersistent) {
+        writeMirror(server, Boolean(mirror?.workspaceEdited));
+        return false;
+      }
+
       const serverHasData = hasUserData(server);
       const mirrorHasData =
         Boolean(mirror?.state) &&
@@ -160,7 +171,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   }
   const method = (init?.method || 'GET').toUpperCase();
   if (method !== 'GET' && url !== '/api/state') {
-    const workspaceEdited = url === '/api/workspace';
+    const workspaceEdited =
+      url === '/api/workspace' ||
+      url === '/api/config' ||
+      url.startsWith('/api/config/');
     void syncMirrorFromServer(workspaceEdited);
   }
   return data as T;
@@ -196,6 +210,45 @@ export const api = {
         method: 'PUT',
         body: JSON.stringify(body),
       }),
+  },
+
+  config: {
+    getAll: () =>
+      request<{
+        workspace: WorkspaceSettings;
+        channels: Channel[];
+        custom: Record<string, unknown>;
+        storage: string;
+      }>('/api/config'),
+    get: <T = unknown>(key: string) =>
+      request<{ key: string; value: T }>(`/api/config/${encodeURIComponent(key)}`),
+    save: (payload: {
+      workspace?: Partial<WorkspaceSettings>;
+      channels?: Partial<Channel>[];
+      custom?: Record<string, unknown>;
+    }) =>
+      request<{
+        ok: boolean;
+        workspace: WorkspaceSettings;
+        channels: Channel[];
+        custom: Record<string, unknown>;
+      }>('/api/config', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      }),
+    set: <T = unknown>(key: string, value: T) =>
+      request<{ ok: boolean; key: string; value: T }>(
+        `/api/config/${encodeURIComponent(key)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ value }),
+        }
+      ),
+    remove: (key: string) =>
+      request<{ ok: boolean; deleted: boolean; key: string }>(
+        `/api/config/${encodeURIComponent(key)}`,
+        { method: 'DELETE' }
+      ),
   },
 
   leads: {
@@ -258,19 +311,32 @@ export const api = {
   },
 
   activities: {
-    list: (opts?: { lead_id?: string; status?: string; limit?: number }) => {
+    list: (opts?: { lead_id?: string; status?: string; type?: string; limit?: number }) => {
       const params = new URLSearchParams();
       if (opts?.lead_id) params.set('lead_id', opts.lead_id);
       if (opts?.status) params.set('status', opts.status);
+      if (opts?.type && opts.type !== 'all') params.set('type', opts.type);
       if (opts?.limit) params.set('limit', String(opts.limit));
       const qs = params.toString();
       return request<{ items: Activity[] }>(`/api/activities${qs ? `?${qs}` : ''}`);
     },
+    get: (id: string) =>
+      request<Activity>(`/api/activities/${encodeURIComponent(id)}`),
     create: (body: Partial<Activity>) =>
       request<Activity>('/api/activities', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    update: (id: string, body: Partial<Activity>) =>
+      request<Activity>(`/api/activities/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: string) =>
+      request<{ ok: boolean; deleted: boolean; id: string }>(
+        `/api/activities/${encodeURIComponent(id)}`,
+        { method: 'DELETE' }
+      ),
   },
 
   automations: {

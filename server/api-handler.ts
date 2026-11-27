@@ -22,11 +22,9 @@ import {
   syncBrevoContact,
   type EmailRuntimeConfig,
 } from './email.ts';
+import type { DbAdapter } from './d1-storage.ts';
 
-export interface DbAdapter {
-  load(): Promise<SunmedxDatabase> | SunmedxDatabase;
-  save(db: SunmedxDatabase): Promise<void> | void;
-}
+export type { DbAdapter };
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -228,6 +226,117 @@ export async function handleApiRequest(
       };
       await storage.save(db);
       return json(db.workspace);
+    }
+
+    // User Configuration CRUD (/api/config and /api/config/:key)
+    if (pathname === '/api/config') {
+      if (method === 'GET') {
+        const db = await storage.load();
+        db.channels = ensureCatalogChannels(db.channels || []);
+        const custom = storage.listAllCustomConfig
+          ? await storage.listAllCustomConfig()
+          : {};
+        return json({
+          workspace: db.workspace,
+          channels: db.channels,
+          custom,
+          storage: runtimeInfo?.storage || 'local-json',
+        });
+      }
+      if (method === 'PUT' || method === 'PATCH' || method === 'POST') {
+        const db = await storage.load();
+        const body = await readBody(request);
+        if (body.workspace && typeof body.workspace === 'object') {
+          db.workspace = {
+            ...db.workspace,
+            ...(body.workspace as Partial<typeof db.workspace>),
+            id: db.workspace.id,
+          };
+        }
+        if (Array.isArray(body.channels)) {
+          db.channels = ensureCatalogChannels(
+            body.channels as SunmedxDatabase['channels']
+          );
+        }
+        await storage.save(db);
+        if (body.custom && typeof body.custom === 'object' && storage.setConfigValue) {
+          for (const [k, v] of Object.entries(body.custom as Record<string, unknown>)) {
+            if (k && k !== 'workspace' && k !== 'channels') {
+              await storage.setConfigValue(k, v);
+            }
+          }
+        }
+        const custom = storage.listAllCustomConfig
+          ? await storage.listAllCustomConfig()
+          : {};
+        return json({
+          ok: true,
+          workspace: db.workspace,
+          channels: db.channels,
+          custom,
+        });
+      }
+    }
+
+    const configKeyMatch = pathname.match(/^\/api\/config\/([^/]+)$/);
+    if (configKeyMatch) {
+      const key = decodeURIComponent(configKeyMatch[1]).trim();
+      if (!key) return json({ error: 'Config key is required' }, 400);
+
+      if (method === 'GET') {
+        const db = await storage.load();
+        if (key === 'workspace') return json({ key, value: db.workspace });
+        if (key === 'channels') {
+          return json({ key, value: ensureCatalogChannels(db.channels || []) });
+        }
+        const val = storage.getConfigValue ? await storage.getConfigValue(key) : null;
+        if (val === null) return json({ error: 'Config key not found' }, 404);
+        return json({ key, value: val });
+      }
+
+      if (method === 'PUT' || method === 'PATCH' || method === 'POST') {
+        const body = await readBody(request);
+        const value = 'value' in body ? body.value : body;
+        const db = await storage.load();
+        if (key === 'workspace' && value && typeof value === 'object') {
+          db.workspace = {
+            ...db.workspace,
+            ...(value as Partial<typeof db.workspace>),
+            id: db.workspace.id,
+          };
+          await storage.save(db);
+          return json({ ok: true, key, value: db.workspace });
+        }
+        if (key === 'channels' && Array.isArray(value)) {
+          db.channels = ensureCatalogChannels(value as SunmedxDatabase['channels']);
+          await storage.save(db);
+          return json({ ok: true, key, value: db.channels });
+        }
+        if (storage.setConfigValue) {
+          await storage.setConfigValue(key, value);
+        }
+        return json({ ok: true, key, value });
+      }
+
+      if (method === 'DELETE') {
+        if (key === 'workspace') {
+          const db = await storage.load();
+          db.workspace = createInitialDb().workspace;
+          await storage.save(db);
+          return json({ ok: true, deleted: true, key });
+        }
+        if (key === 'channels') {
+          const db = await storage.load();
+          db.channels = createInitialDb().channels;
+          await storage.save(db);
+          return json({ ok: true, deleted: true, key });
+        }
+        const deleted = storage.deleteConfigValue
+          ? await storage.deleteConfigValue(key)
+          : false;
+        if (!deleted) return json({ error: 'Config key not found' }, 404);
+        return json({ ok: true, deleted: true, key });
+      }
     }
 
     // Leads
@@ -531,17 +640,21 @@ export async function handleApiRequest(
       return json(db.approvals[idx]);
     }
 
-    // Activities
+    // Activities (Funnel Activity CRUD)
     if (method === 'GET' && pathname === '/api/activities') {
       const db = await storage.load();
       let items = [...db.activities];
       const leadId = url.searchParams.get('lead_id');
       const status = url.searchParams.get('status');
+      const type = url.searchParams.get('type');
       if (leadId) {
         items = items.filter((a) => a.lead_id === leadId);
       }
       if (status) {
         items = items.filter((a) => a.status === status);
+      }
+      if (type && type !== 'all') {
+        items = items.filter((a) => a.type === type);
       }
       items.sort(
         (a, b) =>
@@ -570,6 +683,45 @@ export async function handleApiRequest(
       db.activities.unshift(act);
       await storage.save(db);
       return json(act, 201);
+    }
+
+    const activityMatch = pathname.match(/^\/api\/activities\/([^/]+)$/);
+    if (activityMatch) {
+      const actId = decodeURIComponent(activityMatch[1]);
+      if (method === 'GET') {
+        const db = await storage.load();
+        const act = db.activities.find((a) => a.id === actId);
+        if (!act) return json({ error: 'Activity not found' }, 404);
+        return json(act);
+      }
+      if (method === 'PATCH' || method === 'PUT') {
+        const db = await storage.load();
+        const idx = db.activities.findIndex((a) => a.id === actId);
+        if (idx === -1) return json({ error: 'Activity not found' }, 404);
+        const body = await readBody(request);
+        const current = db.activities[idx];
+        db.activities[idx] = {
+          ...current,
+          ...(body.summary !== undefined ? { summary: String(body.summary).trim() || current.summary } : {}),
+          ...(body.detail !== undefined ? { detail: String(body.detail) } : {}),
+          ...(body.status === 'done' || body.status === 'queued' ? { status: body.status } : {}),
+          ...(body.type ? { type: body.type as typeof current.type } : {}),
+          ...(body.stage !== undefined ? { stage: body.stage ? (String(body.stage) as Lead['stage']) : undefined } : {}),
+          ...(typeof body.automated === 'boolean' ? { automated: body.automated } : {}),
+        };
+        await storage.save(db);
+        return json(db.activities[idx]);
+      }
+      if (method === 'DELETE') {
+        const db = await storage.load();
+        const before = db.activities.length;
+        db.activities = db.activities.filter((a) => a.id !== actId);
+        if (db.activities.length === before) {
+          return json({ error: 'Activity not found' }, 404);
+        }
+        await storage.save(db);
+        return json({ ok: true, deleted: true, id: actId });
+      }
     }
 
     // Automations

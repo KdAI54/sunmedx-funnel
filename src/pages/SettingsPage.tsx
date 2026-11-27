@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { LoaderCircle, Save } from 'lucide-react';
-import { Card, PageHead } from '../components/UI';
+import { Badge, Card, PageHead } from '../components/UI';
 import { useToast } from '../components/Toast';
 import { DEFAULT_WORKSPACE } from '../data/stages';
 import { api } from '../lib/api';
@@ -9,20 +9,24 @@ import type { OfferItem, WorkspaceSettings } from '../types/funnel';
 export function SettingsPage() {
   const toast = useToast();
   const [ws, setWs] = useState<WorkspaceSettings>(DEFAULT_WORKSPACE);
+  const [storageMode, setStorageMode] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.workspace
-      .get()
-      .then((data) => {
-        if (data) {
+    api.config
+      .getAll()
+      .then((cfg) => {
+        if (cfg?.workspace) {
           setWs({
             ...DEFAULT_WORKSPACE,
-            ...data,
-            offers: data.offers?.length ? data.offers : DEFAULT_WORKSPACE.offers,
+            ...cfg.workspace,
+            offers: cfg.workspace.offers?.length
+              ? cfg.workspace.offers
+              : DEFAULT_WORKSPACE.offers,
           });
         }
+        if (cfg?.storage) setStorageMode(cfg.storage);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -44,19 +48,21 @@ export function SettingsPage() {
   async function save() {
     setSaving(true);
     try {
-      const saved = await api.workspace.save({
-        brand: ws.brand,
-        positioning: ws.positioning,
-        audience: ws.audience,
-        pain: ws.pain,
-        tone: ws.tone,
-        landing_headline: ws.landing_headline,
-        landing_subhead: ws.landing_subhead,
-        chat_greeting: ws.chat_greeting,
-        offers: ws.offers,
+      const saved = await api.config.save({
+        workspace: {
+          brand: ws.brand,
+          positioning: ws.positioning,
+          audience: ws.audience,
+          pain: ws.pain,
+          tone: ws.tone,
+          landing_headline: ws.landing_headline,
+          landing_subhead: ws.landing_subhead,
+          chat_greeting: ws.chat_greeting,
+          offers: ws.offers,
+        },
       });
-      setWs(saved);
-      toast.success('Saved. The AI writes with this brief from now on.');
+      if (saved.workspace) setWs(saved.workspace);
+      toast.success('User configuration saved and persisted across refreshes.');
     } catch {
       toast.error('Settings could not be saved. Try again.');
     } finally {
@@ -76,10 +82,19 @@ export function SettingsPage() {
   return (
     <div className="sx-page">
       <PageHead
-        meta="Settings"
+        meta="Settings · User Configuration"
         title="The brand brief"
-        lede="Everything the AI writes is grounded in this page. Change it here, not in a hundred prompts."
+        lede="Everything the AI writes is grounded in this configuration. Saved persistently so changes stay after browser refresh."
       >
+        {storageMode && (
+          <Badge tone={storageMode.startsWith('cloudflare') ? 'green' : 'blue'}>
+            {storageMode === 'cloudflare-d1'
+              ? 'Cloudflare D1'
+              : storageMode === 'cloudflare-kv'
+                ? 'Cloudflare KV'
+                : storageMode}
+          </Badge>
+        )}
         <button
           type="button"
           className="sx-btn sx-btn-primary"
