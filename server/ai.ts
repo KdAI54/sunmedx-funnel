@@ -772,6 +772,12 @@ export async function generatePromoEmailWithAI(
   offer_price: string;
   cta_label: string;
   cta_url: string;
+  logo_url: string;
+  sender_name: string;
+  sender_role: string;
+  sender_email: string;
+  sender_website: string;
+  sender_address: string;
   footer_note: string;
 }> {
   const category = params.category || 'brand_promo';
@@ -785,7 +791,7 @@ export async function generatePromoEmailWithAI(
     category,
     theme,
     subject: `${params.goal} — a calmer plan from ${brand}`,
-    preheader: `${ws.positioning} Built for ${ws.audience}.`,
+    preheader: `${ws.positioning} Built for steady daily focus.`,
     badge:
       category === 'launch'
         ? 'New Release'
@@ -793,12 +799,18 @@ export async function generatePromoEmailWithAI(
           ? 'Check-In Offer'
           : 'Brand Promotion',
     headline: params.goal.length > 10 ? params.goal : ws.landing_headline,
-    body: `Hi {{first_name}},\n\n${ws.pain}\n\n${brand} keeps it practical: ${ws.positioning} No bloated stack, no hype — just the daily sequence designed around ${params.goal.toLowerCase()}.\n\nClick below to explore the full plan and start this week.`,
+    body: `Hi {{first_name}},\n\nIf you have tried complicated routines that never stuck, you are not alone — timing matters more than piling on extra steps.\n\n${brand} keeps it practical: ${ws.positioning} No bloated stack, no guesswork — just one clear daily rhythm.\n\nClick below to explore the full plan and start this week.`,
     offer_title: offer ? `${offer.name} — ${offer.promise}` : '30-Day Energy Reset Protocol',
     offer_price: offer ? `$${offer.price}` : '$29',
     cta_label: 'Explore the Protocol',
     cta_url: appUrl,
-    footer_note: `${brand} · Sent via Brevo. Reply directly if you have any questions.`,
+    logo_url: '/sunmedx-logo.png',
+    sender_name: `${brand} Team`,
+    sender_role: ws.positioning || 'Precision wellness protocols',
+    sender_email: '',
+    sender_website: appUrl,
+    sender_address: 'Delivered via Brevo · Reply directly anytime',
+    footer_note: `You received this brand update from ${brand}. Reply directly if you have any questions.`,
   });
 
   const prompt = `Write a high-converting brand promotion email template in JSON for ${brand}.
@@ -811,6 +823,7 @@ Category: ${category}
 
 Rules:
 - Use "{{first_name}}" in the greeting inside body.
+- Address the reader directly ("you"), never third-person ("they").
 - Keep copy crisp, credible, and persuasion-focused without spammy hype.
 - Return strictly valid JSON with keys:
 {
@@ -840,6 +853,12 @@ Rules:
     offer_price: g.offer_price || fb.offer_price,
     cta_label: g.cta_label || fb.cta_label,
     cta_url: appUrl,
+    logo_url: fb.logo_url,
+    sender_name: fb.sender_name,
+    sender_role: fb.sender_role,
+    sender_email: fb.sender_email,
+    sender_website: fb.sender_website,
+    sender_address: fb.sender_address,
     footer_note: fb.footer_note,
   };
 }

@@ -18,7 +18,20 @@ export interface EmailTemplateDraft {
   offer_price?: string;
   cta_label: string;
   cta_url: string;
+  logo_url?: string;
+  sender_name?: string;
+  sender_role?: string;
+  sender_email?: string;
+  sender_website?: string;
+  sender_address?: string;
   footer_note: string;
+}
+
+export interface RenderEmailOptions {
+  assetBaseUrl?: string;
+  defaultSenderEmail?: string;
+  defaultSenderName?: string;
+  defaultWebsite?: string;
 }
 
 function escapeHtml(text: string): string {
@@ -30,10 +43,23 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function sanitizeEmailUrl(raw?: string): string {
+export function sanitizeEmailUrl(raw?: string, fallback = 'https://sunmedx-funnel.workers.dev'): string {
   const trimmed = String(raw || '').trim();
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return 'https://sunmedx-funnel.workers.dev';
+  return fallback;
+}
+
+export function sanitizeLogoUrl(raw?: string, assetBaseUrl?: string): string {
+  const cleanBase = String(assetBaseUrl || '').trim().replace(/\/+$/, '');
+  const trimmed = String(raw || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(trimmed)) {
+    return trimmed;
+  }
+  const relPath = trimmed.startsWith('/') ? trimmed : '/sunmedx-logo.png';
+  return cleanBase ? `${cleanBase}${relPath}` : relPath;
 }
 
 export function applyPersonalization(text: string, firstName?: string): string {
@@ -63,7 +89,8 @@ export function personalizeTemplate<T extends EmailTemplateDraft>(
 
 export function renderPromoEmailText(
   template: EmailTemplateDraft,
-  brandName = 'Sunmedx'
+  brandName = 'Sunmedx',
+  options?: RenderEmailOptions
 ): string {
   const parts: string[] = [];
   if (template.badge?.trim()) parts.push(`[${template.badge.trim()}]`);
@@ -79,16 +106,33 @@ export function renderPromoEmailText(
   if (template.cta_label?.trim()) {
     parts.push(`${template.cta_label.trim()}: ${sanitizeEmailUrl(template.cta_url)}`);
   }
-  parts.push(
+
+  const senderName = (template.sender_name || options?.defaultSenderName || brandName).trim();
+  const senderRole = (template.sender_role || '').trim();
+  const senderEmail = (template.sender_email || options?.defaultSenderEmail || '').trim();
+  const senderWebsite = sanitizeEmailUrl(
+    template.sender_website || options?.defaultWebsite || template.cta_url
+  );
+  const senderAddress = (template.sender_address || '').trim();
+
+  const signatureLines: string[] = [
+    senderRole ? `${senderName} — ${senderRole}` : senderName,
+  ];
+  if (senderEmail) signatureLines.push(`Email: ${senderEmail}`);
+  if (senderWebsite) signatureLines.push(`Web: ${senderWebsite}`);
+  if (senderAddress) signatureLines.push(senderAddress);
+  signatureLines.push(
     template.footer_note?.trim() || `${brandName} · Precision wellness protocols.`
   );
+  parts.push(`---\n${signatureLines.join('\n')}`);
   return parts.join('\n\n');
 }
 
 export function renderPromoEmailHtml(
   template: EmailTemplateDraft,
   brandName = 'Sunmedx',
-  firstName?: string
+  firstName?: string,
+  options?: RenderEmailOptions
 ): string {
   const t = firstName ? personalizeTemplate(template, firstName) : template;
   const safeBrand = escapeHtml(brandName || 'Sunmedx');
@@ -99,8 +143,19 @@ export function renderPromoEmailHtml(
   const safeOfferPrice = escapeHtml(t.offer_price || '');
   const safeCtaLabel = escapeHtml(t.cta_label || 'Explore the protocol');
   const safeCtaUrl = escapeHtml(sanitizeEmailUrl(t.cta_url));
-  const safeFooter = escapeHtml(
-    t.footer_note || `You received this from ${brandName}. Reply directly anytime.`
+
+  const resolvedLogoUrl = sanitizeLogoUrl(t.logo_url, options?.assetBaseUrl);
+  const safeLogoUrl = escapeHtml(resolvedLogoUrl);
+
+  const senderName = (t.sender_name || options?.defaultSenderName || brandName || 'Sunmedx').trim();
+  const senderRole = (t.sender_role || '').trim();
+  const senderEmail = (t.sender_email || options?.defaultSenderEmail || '').trim();
+  const rawWebsite = (t.sender_website || options?.defaultWebsite || t.cta_url || '').trim();
+  const safeWebsiteUrl = rawWebsite ? escapeHtml(sanitizeEmailUrl(rawWebsite)) : '';
+  const displayWebsite = safeWebsiteUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  const senderAddress = (t.sender_address || '').trim();
+  const safeFooterNote = escapeHtml(
+    t.footer_note || `You received this brand update from ${brandName}. Reply directly anytime.`
   );
 
   const paragraphsHtml = (t.body || '')
@@ -132,6 +187,7 @@ export function renderPromoEmailHtml(
           offerBg: '#f8fafc',
           offerBorder: '#cbd5e1',
           offerPriceColor: '#1d4ed8',
+          logoBoxBg: '#070f24',
         }
       : theme === 'minimal'
         ? {
@@ -148,6 +204,7 @@ export function renderPromoEmailHtml(
             offerBg: '#f8fafc',
             offerBorder: '#e2e8f0',
             offerPriceColor: '#ea580c',
+            logoBoxBg: '#0f172a',
           }
         : {
             outerBg: '#f3f4f8',
@@ -163,6 +220,7 @@ export function renderPromoEmailHtml(
             offerBg: '#fff7ed',
             offerBorder: '#fed7aa',
             offerPriceColor: '#ea580c',
+            logoBoxBg: '#080e21',
           };
 
   const offerCardHtml = safeOfferTitle
@@ -184,7 +242,18 @@ export function renderPromoEmailHtml(
       </table>`
     : '';
 
-  const logoSvg = `<svg width="22" height="22" viewBox="0 0 32 32" fill="none" style="vertical-align:middle;margin-right:8px;"><path d="M3.5 2H28.5C29.6 2 30.2 3.2 29.5 4.1L23.5 11.7C23.1 12.2 22.5 12.5 21.9 12.5H10.1C9.5 12.5 8.9 12.2 8.5 11.7L2.5 4.1C1.8 3.2 2.4 2 3.5 2Z" fill="#f97316"/><path d="M10.8 14.8H21.2C22.2 14.8 22.8 15.9 22.2 16.7L18.7 22.2C18.3 22.7 17.8 23 17.2 23H14.8C14.2 23 13.7 22.7 13.3 22.2L9.8 16.7C9.2 15.9 9.8 14.8 10.8 14.8Z" fill="#ef4444"/><circle cx="16" cy="27.2" r="3.4" fill="#f97316"/></svg>`;
+  const senderMetaItems: string[] = [];
+  if (senderEmail) {
+    const safeEmail = escapeHtml(senderEmail);
+    senderMetaItems.push(
+      `<a href="mailto:${safeEmail}" style="color:#334155;text-decoration:none;font-weight:500;">${safeEmail}</a>`
+    );
+  }
+  if (safeWebsiteUrl) {
+    senderMetaItems.push(
+      `<a href="${safeWebsiteUrl}" target="_blank" rel="noopener noreferrer" style="color:${palette.accentHex};text-decoration:none;font-weight:500;">${escapeHtml(displayWebsite)}</a>`
+    );
+  }
 
   return `<!doctype html>
 <html lang="en">
@@ -201,9 +270,16 @@ export function renderPromoEmailHtml(
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 12px 32px rgba(15,23,42,0.08);">
           <tr>
             <td style="background:${palette.heroBg};padding:28px 30px 26px;border-bottom:3px solid ${palette.heroBorder};">
-              <div style="font-size:15px;font-weight:700;color:${palette.brandInk};letter-spacing:-0.01em;margin-bottom:18px;">
-                ${logoSvg}<span style="vertical-align:middle;">${safeBrand}</span>
-              </div>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:18px;">
+                <tr>
+                  <td style="vertical-align:middle;padding-right:10px;">
+                    <img src="${safeLogoUrl}" width="24" height="24" alt="${safeBrand}" style="display:block;width:24px;height:24px;border:0;border-radius:4px;" />
+                  </td>
+                  <td style="vertical-align:middle;font-size:15px;font-weight:700;color:${palette.brandInk};letter-spacing:-0.01em;">
+                    ${safeBrand}
+                  </td>
+                </tr>
+              </table>
               <div style="display:inline-block;padding:4px 10px;border-radius:999px;background:${palette.badgeBg};color:${palette.badgeColor};font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:12px;">
                 ${safeBadge}
               </div>
@@ -228,8 +304,42 @@ export function renderPromoEmailHtml(
             </td>
           </tr>
           <tr>
-            <td style="padding:18px 30px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-              <p style="margin:0;font-size:12px;line-height:1.55;color:#64748b;">${safeFooter}</p>
+            <td style="padding:22px 30px 24px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td width="52" valign="top" style="padding-right:14px;">
+                    <table role="presentation" cellspacing="0" cellpadding="0" style="width:42px;height:42px;background:${palette.logoBoxBg};border-radius:10px;border:1px solid #cbd5e1;">
+                      <tr>
+                        <td align="center" valign="middle" style="padding:7px;">
+                          <img src="${safeLogoUrl}" width="26" height="26" alt="${safeBrand} logo" style="display:block;width:26px;height:26px;border:0;" />
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td valign="top">
+                    <div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.35;">
+                      ${escapeHtml(senderName)}${
+                        senderRole
+                          ? ` <span style="font-weight:500;color:#64748b;">&middot; ${escapeHtml(senderRole)}</span>`
+                          : ''
+                      }
+                    </div>
+                    ${
+                      senderMetaItems.length > 0
+                        ? `<div style="margin-top:4px;font-size:12.5px;line-height:1.5;color:#475569;">${senderMetaItems.join(' &nbsp;&bull;&nbsp; ')}</div>`
+                        : ''
+                    }
+                    ${
+                      senderAddress
+                        ? `<div style="margin-top:3px;font-size:11.5px;line-height:1.45;color:#64748b;">${escapeHtml(senderAddress)}</div>`
+                        : ''
+                    }
+                  </td>
+                </tr>
+              </table>
+              <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11.5px;line-height:1.55;color:#64748b;">
+                ${safeFooterNote}
+              </div>
             </td>
           </tr>
         </table>
@@ -266,7 +376,13 @@ export function createDefaultPromoTemplates(
       offer_price: primaryOffer ? `$${primaryOffer.price}` : '$29',
       cta_label: 'Claim Your Protocol',
       cta_url: appUrl,
-      footer_note: `${brand} · ${workspace.positioning || 'Precision wellness protocols.'} Reply directly if you have questions.`,
+      logo_url: '/sunmedx-logo.png',
+      sender_name: `${brand} Team`,
+      sender_role: workspace.positioning || 'Precision wellness protocols',
+      sender_email: '',
+      sender_website: appUrl,
+      sender_address: 'Delivered via Brevo · Reply directly anytime',
+      footer_note: `You received this brand update from ${brand}. Reply directly if you have any questions.`,
       created_date: now,
       updated_date: now,
     },
@@ -286,7 +402,13 @@ export function createDefaultPromoTemplates(
       offer_price: serviceOffer ? `$${serviceOffer.price}` : '$180',
       cta_label: 'Book Your Review',
       cta_url: appUrl,
-      footer_note: `${brand} · Delivered via Brevo. Simply reply to this email to reserve a time.`,
+      logo_url: '/sunmedx-logo.png',
+      sender_name: `${brand} Founder Desk`,
+      sender_role: '1:1 Energy & Sleep Review',
+      sender_email: '',
+      sender_website: appUrl,
+      sender_address: 'Delivered via Brevo · Direct reply enabled',
+      footer_note: `Sent by ${brand}. Simply reply to this email to reserve a review slot.`,
       created_date: now,
       updated_date: now,
     },

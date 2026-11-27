@@ -63,7 +63,13 @@ function blankDraft(brand = 'Sunmedx'): EmailTemplateDraft {
     offer_price: '$29',
     cta_label: 'Claim Your Protocol',
     cta_url: 'https://sunmedx-funnel.workers.dev',
-    footer_note: `${brand} · Precision wellness protocols. Reply directly anytime.`,
+    logo_url: '/sunmedx-logo.png',
+    sender_name: `${brand} Team`,
+    sender_role: 'Precision wellness protocols',
+    sender_email: '',
+    sender_website: 'https://sunmedx-funnel.workers.dev',
+    sender_address: 'Delivered via Brevo · Reply directly anytime',
+    footer_note: `You received this brand update from ${brand}. Reply directly anytime.`,
   };
 }
 
@@ -81,6 +87,12 @@ function toDraft(tpl: EmailTemplate): EmailTemplateDraft {
     offer_price: tpl.offer_price || '',
     cta_label: tpl.cta_label,
     cta_url: tpl.cta_url,
+    logo_url: tpl.logo_url || '/sunmedx-logo.png',
+    sender_name: tpl.sender_name || '',
+    sender_role: tpl.sender_role || '',
+    sender_email: tpl.sender_email || '',
+    sender_website: tpl.sender_website || '',
+    sender_address: tpl.sender_address || '',
     footer_note: tpl.footer_note,
   };
 }
@@ -255,8 +267,15 @@ export function EmailTemplatesPage() {
   }, [leadsWithEmail, audience]);
 
   const previewHtml = useMemo(
-    () => renderPromoEmailHtml(draft, brandName, previewName || 'Alex'),
-    [draft, brandName, previewName]
+    () =>
+      renderPromoEmailHtml(draft, brandName, previewName || 'Alex', {
+        assetBaseUrl: typeof window !== 'undefined' ? window.location.origin : '',
+        defaultSenderEmail: health?.brevoSenderEmail || '',
+        defaultSenderName: `${brandName} Team`,
+        defaultWebsite:
+          typeof window !== 'undefined' ? window.location.origin : 'https://sunmedx-funnel.workers.dev',
+      }),
+    [draft, brandName, previewName, health?.brevoSenderEmail]
   );
 
   async function copyHtml() {
@@ -651,16 +670,150 @@ export function EmailTemplatesPage() {
                   </div>
                 </div>
 
-                <div className="sx-field">
-                  <label className="sx-label" htmlFor="tpl-footer">
-                    Footer note
-                  </label>
-                  <input
-                    id="tpl-footer"
-                    className="sx-input"
-                    value={draft.footer_note}
-                    onChange={(e) => updateField('footer_note', e.target.value)}
-                  />
+                <div
+                  style={{
+                    borderTop: '1px solid var(--sx-line)',
+                    paddingTop: 14,
+                    marginTop: 4,
+                    display: 'grid',
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                    }}
+                  >
+                    <span className="sx-label" style={{ marginBottom: 0 }}>
+                      Footer: Brand logo &amp; sender details
+                    </span>
+                    <button
+                      type="button"
+                      className="sx-btn sx-btn-quiet sx-btn-sm"
+                      onClick={() => updateField('logo_url', '/sunmedx-logo.png')}
+                    >
+                      Use Sunmedx logo
+                    </button>
+                  </div>
+
+                  <div className="sx-field">
+                    <label className="sx-label" htmlFor="tpl-logo-url">
+                      Brand logo image URL
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 8,
+                          background: '#080e21',
+                          border: '1px solid var(--sx-line)',
+                          display: 'grid',
+                          placeItems: 'center',
+                          flexShrink: 0,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <img
+                          src={draft.logo_url?.trim() || '/sunmedx-logo.png'}
+                          alt="Brand logo preview"
+                          style={{ width: 24, height: 24, objectFit: 'contain' }}
+                        />
+                      </div>
+                      <input
+                        id="tpl-logo-url"
+                        className="sx-input"
+                        value={draft.logo_url || ''}
+                        onChange={(e) => updateField('logo_url', e.target.value)}
+                        placeholder="/sunmedx-logo.png or https://yourdomain.com/logo.png"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sx-row-2">
+                    <div className="sx-field">
+                      <label className="sx-label" htmlFor="tpl-sender-name">
+                        Sender name
+                      </label>
+                      <input
+                        id="tpl-sender-name"
+                        className="sx-input"
+                        value={draft.sender_name || ''}
+                        onChange={(e) => updateField('sender_name', e.target.value)}
+                        placeholder={`${brandName} Team`}
+                      />
+                    </div>
+                    <div className="sx-field">
+                      <label className="sx-label" htmlFor="tpl-sender-role">
+                        Role / brand tagline
+                      </label>
+                      <input
+                        id="tpl-sender-role"
+                        className="sx-input"
+                        value={draft.sender_role || ''}
+                        onChange={(e) => updateField('sender_role', e.target.value)}
+                        placeholder="Precision wellness protocols"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sx-row-2">
+                    <div className="sx-field">
+                      <label className="sx-label" htmlFor="tpl-sender-email">
+                        Sender contact email
+                      </label>
+                      <input
+                        id="tpl-sender-email"
+                        type="email"
+                        className="sx-input"
+                        value={draft.sender_email || ''}
+                        onChange={(e) => updateField('sender_email', e.target.value)}
+                        placeholder={
+                          health?.brevoSenderEmail || 'Auto-filled from active Brevo sender'
+                        }
+                      />
+                    </div>
+                    <div className="sx-field">
+                      <label className="sx-label" htmlFor="tpl-sender-website">
+                        Sender website URL
+                      </label>
+                      <input
+                        id="tpl-sender-website"
+                        className="sx-input"
+                        value={draft.sender_website || ''}
+                        onChange={(e) => updateField('sender_website', e.target.value)}
+                        placeholder="https://sunmedx-funnel.workers.dev"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sx-field">
+                    <label className="sx-label" htmlFor="tpl-sender-address">
+                      Sender address / signature line
+                    </label>
+                    <input
+                      id="tpl-sender-address"
+                      className="sx-input"
+                      value={draft.sender_address || ''}
+                      onChange={(e) => updateField('sender_address', e.target.value)}
+                      placeholder="Austin, TX · Delivered via Brevo"
+                    />
+                  </div>
+
+                  <div className="sx-field">
+                    <label className="sx-label" htmlFor="tpl-footer">
+                      Footer note
+                    </label>
+                    <input
+                      id="tpl-footer"
+                      className="sx-input"
+                      value={draft.footer_note}
+                      onChange={(e) => updateField('footer_note', e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

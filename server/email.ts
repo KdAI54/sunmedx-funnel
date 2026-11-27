@@ -116,6 +116,29 @@ export function resolveChannelSender(
   return '';
 }
 
+export async function resolveActiveEmailSender(
+  runtime: EmailRuntimeConfig,
+  preferredEmail?: string,
+  preferredName?: string
+): Promise<{ email: string; name: string } | null> {
+  const brevoKey = runtime.brevoApiKey?.trim();
+  if (brevoKey) {
+    return resolveBrevoSender(
+      brevoKey,
+      preferredEmail || runtime.brevoSenderEmail,
+      preferredName || runtime.brevoSenderName
+    );
+  }
+  const fallbackEmail = (preferredEmail || runtime.brevoSenderEmail || '').trim().toLowerCase();
+  if (isValidEmail(fallbackEmail)) {
+    return {
+      email: fallbackEmail,
+      name: (preferredName || runtime.brevoSenderName || 'Sunmedx').trim(),
+    };
+  }
+  return null;
+}
+
 export async function sendTransactionalEmail(
   input: SendEmailInput,
   runtime: EmailRuntimeConfig

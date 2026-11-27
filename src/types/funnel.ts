@@ -214,6 +214,12 @@ export interface EmailTemplate {
   offer_price?: string;
   cta_label: string;
   cta_url: string;
+  logo_url?: string;
+  sender_name?: string;
+  sender_role?: string;
+  sender_email?: string;
+  sender_website?: string;
+  sender_address?: string;
   footer_note: string;
   created_date: string;
   updated_date: string;

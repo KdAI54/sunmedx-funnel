@@ -31,6 +31,7 @@ import {
 } from './seed.ts';
 import {
   isValidEmail,
+  resolveActiveEmailSender,
   resolveChannelSender,
   sendTransactionalEmail,
   syncBrevoContact,
@@ -262,6 +263,30 @@ export async function handleApiRequest(
                 : savedTpl?.offer_price,
             cta_label: String(inlineTpl.cta_label || savedTpl?.cta_label || 'Learn more'),
             cta_url: sanitizeEmailUrl(inlineTpl.cta_url || savedTpl?.cta_url || runtimeInfo?.appUrl),
+            logo_url:
+              inlineTpl.logo_url !== undefined
+                ? String(inlineTpl.logo_url)
+                : savedTpl?.logo_url || '/sunmedx-logo.png',
+            sender_name:
+              inlineTpl.sender_name !== undefined
+                ? String(inlineTpl.sender_name)
+                : savedTpl?.sender_name || '',
+            sender_role:
+              inlineTpl.sender_role !== undefined
+                ? String(inlineTpl.sender_role)
+                : savedTpl?.sender_role || '',
+            sender_email:
+              inlineTpl.sender_email !== undefined
+                ? String(inlineTpl.sender_email)
+                : savedTpl?.sender_email || '',
+            sender_website:
+              inlineTpl.sender_website !== undefined
+                ? String(inlineTpl.sender_website)
+                : savedTpl?.sender_website || '',
+            sender_address:
+              inlineTpl.sender_address !== undefined
+                ? String(inlineTpl.sender_address)
+                : savedTpl?.sender_address || '',
             footer_note: String(
               inlineTpl.footer_note ||
                 savedTpl?.footer_note ||
@@ -327,6 +352,21 @@ export async function handleApiRequest(
         );
       }
 
+      const preferredSenderName = (baseTpl.sender_name || brandName).trim();
+      const publicOrigin =
+        url.protocol === 'https:'
+          ? url.origin
+          : runtimeInfo?.appUrl && /^https?:\/\//i.test(runtimeInfo.appUrl)
+            ? new URL(runtimeInfo.appUrl).origin
+            : url.origin;
+      const resolvedSender = await resolveActiveEmailSender(
+        emailRuntime,
+        fromEmail,
+        preferredSenderName
+      );
+      const effectiveSenderEmail = resolvedSender?.email || fromEmail;
+      const effectiveSenderName = preferredSenderName || resolvedSender?.name || brandName;
+
       const now = new Date().toISOString();
       const results: Array<{
         email: string;
@@ -337,7 +377,7 @@ export async function handleApiRequest(
       let sentCount = 0;
       let failedCount = 0;
       let activeProvider = 'none';
-      let activeSender = fromEmail;
+      let activeSender = effectiveSenderEmail;
 
       for (const target of targets) {
         const rawLocal = target.email.split('@')[0].split(/[._+-]/)[0] || '';
@@ -348,8 +388,14 @@ export async function handleApiRequest(
           ? target.name.trim().split(/\s+/)[0]
           : guessedFirst;
         const personalized = personalizeTemplate(baseTpl, firstName);
-        const htmlContent = renderPromoEmailHtml(personalized, brandName);
-        const textBody = renderPromoEmailText(personalized, brandName);
+        const renderOptions = {
+          assetBaseUrl: publicOrigin,
+          defaultSenderEmail: effectiveSenderEmail,
+          defaultSenderName: effectiveSenderName,
+          defaultWebsite: publicOrigin,
+        };
+        const htmlContent = renderPromoEmailHtml(personalized, brandName, undefined, renderOptions);
+        const textBody = renderPromoEmailText(personalized, brandName, renderOptions);
 
         const res = await sendTransactionalEmail(
           {
@@ -358,8 +404,8 @@ export async function handleApiRequest(
             subject: personalized.subject,
             textBody,
             htmlContent,
-            fromEmail,
-            fromName: brandName,
+            fromEmail: effectiveSenderEmail || fromEmail,
+            fromName: effectiveSenderName,
           },
           emailRuntime
         );
@@ -439,6 +485,12 @@ export async function handleApiRequest(
         cta_url: sanitizeEmailUrl(
           String(body.cta_url || runtimeInfo?.appUrl || 'https://sunmedx-funnel.workers.dev')
         ),
+        logo_url: body.logo_url ? String(body.logo_url).trim() : '/sunmedx-logo.png',
+        sender_name: body.sender_name ? String(body.sender_name).trim() : `${db.workspace.brand || 'Sunmedx'} Team`,
+        sender_role: body.sender_role ? String(body.sender_role).trim() : '',
+        sender_email: body.sender_email ? String(body.sender_email).trim() : '',
+        sender_website: body.sender_website ? String(body.sender_website).trim() : '',
+        sender_address: body.sender_address ? String(body.sender_address).trim() : '',
         footer_note: String(
           body.footer_note || `${db.workspace.brand || 'Sunmedx'} · Precision wellness protocols.`
         ).trim(),
@@ -484,6 +536,12 @@ export async function handleApiRequest(
           ...(body.cta_url !== undefined
             ? { cta_url: sanitizeEmailUrl(String(body.cta_url)) }
             : {}),
+          ...(body.logo_url !== undefined ? { logo_url: String(body.logo_url).trim() } : {}),
+          ...(body.sender_name !== undefined ? { sender_name: String(body.sender_name) } : {}),
+          ...(body.sender_role !== undefined ? { sender_role: String(body.sender_role) } : {}),
+          ...(body.sender_email !== undefined ? { sender_email: String(body.sender_email).trim() } : {}),
+          ...(body.sender_website !== undefined ? { sender_website: String(body.sender_website).trim() } : {}),
+          ...(body.sender_address !== undefined ? { sender_address: String(body.sender_address) } : {}),
           ...(body.footer_note !== undefined ? { footer_note: String(body.footer_note) } : {}),
           updated_date: new Date().toISOString(),
         };
