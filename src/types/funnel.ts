@@ -28,6 +28,8 @@ export interface Lead {
   deal_value?: number;
   last_touch?: string;
   won_at?: string;
+  email_unsubscribed?: boolean;
+  unsubscribed_date?: string;
   created_date: string;
   updated_date: string;
 }

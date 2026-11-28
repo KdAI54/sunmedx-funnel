@@ -30,11 +30,14 @@ import {
   type SunmedxDatabase,
 } from './seed.ts';
 import {
+  createUnsubscribeToken,
   isValidEmail,
   resolveActiveEmailSender,
   resolveChannelSender,
   sendTransactionalEmail,
+  setBrevoContactSubscription,
   syncBrevoContact,
+  verifyUnsubscribeToken,
   type EmailRuntimeConfig,
 } from './email.ts';
 import type { DbAdapter } from './d1-storage.ts';
@@ -200,10 +203,178 @@ export async function handleApiRequest(
       }
     };
 
+    type UnsubscribeEntry = {
+      email: string;
+      reason?: string;
+      unsubscribed_date: string;
+    };
+
+    const unsubSecret =
+      emailRuntime.brevoApiKey?.trim() ||
+      emailRuntime.resendApiKey?.trim() ||
+      geminiApiKey?.trim() ||
+      'sunmedx-unsubscribe-v1';
+
+    const getPublicOrigin = () =>
+      url.protocol === 'https:'
+        ? url.origin
+        : runtimeInfo?.appUrl && /^https?:\/\//i.test(runtimeInfo.appUrl)
+          ? new URL(runtimeInfo.appUrl).origin
+          : url.origin;
+
+    const loadUnsubscribedList = async (): Promise<UnsubscribeEntry[]> => {
+      const stored = storage.getConfigValue
+        ? await storage.getConfigValue('email_unsubscribed_list')
+        : null;
+      return Array.isArray(stored) ? (stored as UnsubscribeEntry[]) : [];
+    };
+
+    const saveUnsubscribedList = async (items: UnsubscribeEntry[]): Promise<void> => {
+      if (storage.setConfigValue) {
+        await storage.setConfigValue('email_unsubscribed_list', items);
+      }
+    };
+
+    const isEmailSuppressed = (
+      email: string,
+      db: SunmedxDatabase,
+      unsubList: UnsubscribeEntry[]
+    ): boolean => {
+      const clean = email.trim().toLowerCase();
+      if (!clean) return false;
+      if (unsubList.some((u) => u.email.trim().toLowerCase() === clean)) return true;
+      return db.leads.some(
+        (l) => l.email.trim().toLowerCase() === clean && Boolean(l.email_unsubscribed)
+      );
+    };
+
+    const applyUnsubscribeChange = async (
+      email: string,
+      unsubscribed: boolean,
+      reason?: string
+    ): Promise<{ ok: boolean; unsubscribed: boolean; unsubscribed_date?: string }> => {
+      const clean = email.trim().toLowerCase();
+      const now = new Date().toISOString();
+      const db = await storage.load();
+      const list = await loadUnsubscribedList();
+
+      let nextList: UnsubscribeEntry[];
+      if (unsubscribed) {
+        const filtered = list.filter((u) => u.email.trim().toLowerCase() !== clean);
+        nextList = [{ email: clean, reason: reason || '', unsubscribed_date: now }, ...filtered];
+      } else {
+        nextList = list.filter((u) => u.email.trim().toLowerCase() !== clean);
+      }
+      await saveUnsubscribedList(nextList);
+
+      for (const lead of db.leads) {
+        if (lead.email.trim().toLowerCase() === clean) {
+          lead.email_unsubscribed = unsubscribed;
+          lead.unsubscribed_date = unsubscribed ? now : undefined;
+          lead.updated_date = now;
+        }
+      }
+
+      db.activities.unshift({
+        id: makeId('act'),
+        type: 'email',
+        summary: unsubscribed
+          ? `${clean} unsubscribed from mailing`
+          : `${clean} resubscribed to mailing`,
+        detail: reason ? `Reason: ${reason}` : 'Updated via email preference link',
+        status: 'done',
+        automated: true,
+        created_date: now,
+      });
+      await storage.save(db);
+      await setBrevoContactSubscription(clean, unsubscribed, emailRuntime.brevoApiKey);
+
+      return { ok: true, unsubscribed, unsubscribed_date: unsubscribed ? now : undefined };
+    };
+
+    if (method === 'GET' && pathname === '/api/unsubscribe/status') {
+      const email = String(url.searchParams.get('email') || '').trim().toLowerCase();
+      const token = String(url.searchParams.get('t') || '').trim();
+      if (!isValidEmail(email)) {
+        return json({ ok: false, error: 'Valid email is required.' }, 400);
+      }
+      const valid = await verifyUnsubscribeToken(email, token, unsubSecret);
+      if (!valid) {
+        return json(
+          { ok: false, error: 'Invalid or expired unsubscribe link token.' },
+          403
+        );
+      }
+      const db = await storage.load();
+      const list = await loadUnsubscribedList();
+      const entry = list.find((u) => u.email.trim().toLowerCase() === email);
+      return json({
+        ok: true,
+        email,
+        brand: db.workspace.brand || 'Sunmedx',
+        unsubscribed: isEmailSuppressed(email, db, list),
+        unsubscribed_date: entry?.unsubscribed_date,
+      });
+    }
+
+    if (method === 'POST' && pathname === '/api/unsubscribe') {
+      const contentType = request.headers.get('content-type') || '';
+      let body: Record<string, unknown> = {};
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        const raw = await request.text();
+        const formParams = new URLSearchParams(raw);
+        body = {
+          email: formParams.get('email') || url.searchParams.get('email') || '',
+          t: formParams.get('t') || url.searchParams.get('t') || '',
+          reason: formParams.get('List-Unsubscribe') || formParams.get('reason') || 'One-click unsubscribe',
+        };
+      } else {
+        body = await readBody(request);
+      }
+
+      const email = String(body.email || url.searchParams.get('email') || '')
+        .trim()
+        .toLowerCase();
+      const token = String(body.t || url.searchParams.get('t') || '').trim();
+      const action = String(body.action || 'unsubscribe').toLowerCase();
+      const reason = String(body.reason || '').trim();
+
+      if (!isValidEmail(email)) {
+        return json({ ok: false, error: 'Valid email is required.' }, 400);
+      }
+      const valid = await verifyUnsubscribeToken(email, token, unsubSecret);
+      if (!valid) {
+        return json(
+          {
+            ok: false,
+            error: 'Invalid or missing unsubscribe token. Use the Unsubscribe link from your email.',
+          },
+          403
+        );
+      }
+
+      const shouldUnsub = action !== 'resubscribe';
+      const result = await applyUnsubscribeChange(email, shouldUnsub, reason);
+      return json({ ...result, email });
+    }
+
     if (method === 'GET' && pathname === '/api/email-templates') {
       const db = await storage.load();
-      const items = await loadEmailTemplates(db);
-      return json({ items });
+      const [items, unsubList] = await Promise.all([
+        loadEmailTemplates(db),
+        loadUnsubscribedList(),
+      ]);
+      const suppressedSet = new Set(unsubList.map((u) => u.email.trim().toLowerCase()));
+      for (const lead of db.leads) {
+        if (lead.email_unsubscribed && isValidEmail(lead.email)) {
+          suppressedSet.add(lead.email.trim().toLowerCase());
+        }
+      }
+      return json({
+        items,
+        unsubscribedCount: suppressedSet.size,
+        unsubscribedEmails: Array.from(suppressedSet),
+      });
     }
 
     if (method === 'POST' && pathname === '/api/email-templates/generate') {
@@ -306,13 +477,24 @@ export async function handleApiRequest(
       const brandName = db.workspace.brand || 'Sunmedx';
 
       type RecipientTarget = { email: string; name?: string; leadId?: string };
+      const unsubList = await loadUnsubscribedList();
       const targets: RecipientTarget[] = [];
       const seenEmails = new Set<string>();
+      let skippedUnsubscribed = 0;
 
       const singleEmail = String(body.toEmail || '').trim().toLowerCase();
       if (singleEmail) {
         if (!isValidEmail(singleEmail)) {
           return json({ ok: false, error: 'Enter a valid recipient email address.' }, 400);
+        }
+        if (isEmailSuppressed(singleEmail, db, unsubList)) {
+          return json(
+            {
+              ok: false,
+              error: `${singleEmail} has unsubscribed from this mailing. Resubscribe them in Leads before sending.`,
+            },
+            400
+          );
         }
         seenEmails.add(singleEmail);
         targets.push({
@@ -334,6 +516,10 @@ export async function handleApiRequest(
 
         for (const lead of matchingLeads) {
           const em = lead.email.trim().toLowerCase();
+          if (isEmailSuppressed(em, db, unsubList)) {
+            skippedUnsubscribed++;
+            continue;
+          }
           if (seenEmails.has(em)) continue;
           seenEmails.add(em);
           targets.push({ email: em, name: lead.full_name, leadId: lead.id });
@@ -346,19 +532,16 @@ export async function handleApiRequest(
           {
             ok: false,
             error:
-              'No recipients with valid emails found. Enter a test email or capture leads first.',
+              skippedUnsubscribed > 0
+                ? 'All matching leads have unsubscribed from this mailing.'
+                : 'No recipients with valid emails found. Enter a test email or capture leads first.',
           },
           400
         );
       }
 
       const preferredSenderName = (baseTpl.sender_name || brandName).trim();
-      const publicOrigin =
-        url.protocol === 'https:'
-          ? url.origin
-          : runtimeInfo?.appUrl && /^https?:\/\//i.test(runtimeInfo.appUrl)
-            ? new URL(runtimeInfo.appUrl).origin
-            : url.origin;
+      const publicOrigin = getPublicOrigin();
       const resolvedSender = await resolveActiveEmailSender(
         emailRuntime,
         fromEmail,
@@ -388,14 +571,27 @@ export async function handleApiRequest(
           ? target.name.trim().split(/\s+/)[0]
           : guessedFirst;
         const personalized = personalizeTemplate(baseTpl, firstName);
+        const unsubToken = await createUnsubscribeToken(target.email, unsubSecret);
+        const unsubscribePageUrl = `${publicOrigin}/unsubscribe?email=${encodeURIComponent(
+          target.email
+        )}&t=${encodeURIComponent(unsubToken)}`;
+        const unsubscribeOneClickUrl = `${publicOrigin}/api/unsubscribe?email=${encodeURIComponent(
+          target.email
+        )}&t=${encodeURIComponent(unsubToken)}`;
+
         const renderOptions = {
           assetBaseUrl: publicOrigin,
           defaultSenderEmail: effectiveSenderEmail,
           defaultSenderName: effectiveSenderName,
           defaultWebsite: publicOrigin,
+          unsubscribeUrl: unsubscribePageUrl,
         };
         const htmlContent = renderPromoEmailHtml(personalized, brandName, undefined, renderOptions);
         const textBody = renderPromoEmailText(personalized, brandName, renderOptions);
+
+        const listUnsubHeader = effectiveSenderEmail
+          ? `<${unsubscribeOneClickUrl}>, <mailto:${effectiveSenderEmail}?subject=Unsubscribe>`
+          : `<${unsubscribeOneClickUrl}>`;
 
         const res = await sendTransactionalEmail(
           {
@@ -406,6 +602,10 @@ export async function handleApiRequest(
             htmlContent,
             fromEmail: effectiveSenderEmail || fromEmail,
             fromName: effectiveSenderName,
+            headers: {
+              'List-Unsubscribe': listUnsubHeader,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            },
           },
           emailRuntime
         );
@@ -440,7 +640,7 @@ export async function handleApiRequest(
           sentCount > 0
             ? `Subject: ${baseTpl.subject}${activeSender ? ` · From: ${activeSender}` : ''}${
                 failedCount ? ` · ${failedCount} failed` : ''
-              }`
+              }${skippedUnsubscribed ? ` · ${skippedUnsubscribed} unsubscribed skipped` : ''}`
             : results[0]?.error || 'Email delivery failed',
         status: 'done',
         automated: false,
@@ -454,6 +654,7 @@ export async function handleApiRequest(
         senderEmail: activeSender,
         sentCount,
         failedCount,
+        skippedUnsubscribed,
         results,
         error: sentCount === 0 ? results[0]?.error : undefined,
       });
@@ -888,11 +1089,31 @@ export async function handleApiRequest(
         if (idx === -1) return json({ error: 'Lead not found' }, 404);
         const body = await readBody(request);
         const now = new Date().toISOString();
-        db.leads[idx] = {
+        const updatedLead: Lead = {
           ...db.leads[idx],
           ...(body as Partial<Lead>),
           updated_date: now,
         };
+        if (body.email_unsubscribed === false) {
+          updatedLead.unsubscribed_date = undefined;
+        } else if (body.email_unsubscribed === true && !updatedLead.unsubscribed_date) {
+          updatedLead.unsubscribed_date = now;
+        }
+        db.leads[idx] = updatedLead;
+
+        if (typeof body.email_unsubscribed === 'boolean' && isValidEmail(updatedLead.email)) {
+          const clean = updatedLead.email.trim().toLowerCase();
+          const list = await loadUnsubscribedList();
+          const nextList = body.email_unsubscribed
+            ? [
+                { email: clean, reason: 'Updated by operator', unsubscribed_date: now },
+                ...list.filter((u) => u.email.trim().toLowerCase() !== clean),
+              ]
+            : list.filter((u) => u.email.trim().toLowerCase() !== clean);
+          await saveUnsubscribedList(nextList);
+          await setBrevoContactSubscription(clean, body.email_unsubscribed, emailRuntime.brevoApiKey);
+        }
+
         await storage.save(db);
         return json(db.leads[idx]);
       }
@@ -940,16 +1161,38 @@ export async function handleApiRequest(
         });
       }
 
+      const unsubList = await loadUnsubscribedList();
+      if (isEmailSuppressed(item.lead_email, db, unsubList)) {
+        return json({
+          ok: false,
+          error: `${item.lead_email} has unsubscribed from this mailing.`,
+        });
+      }
+
       db.channels = ensureCatalogChannels(db.channels || []);
       const fromEmail = resolveChannelSender(db.channels, emailRuntime);
+      const publicOrigin = getPublicOrigin();
+      const unsubToken = await createUnsubscribeToken(item.lead_email, unsubSecret);
+      const unsubscribeOneClickUrl = `${publicOrigin}/api/unsubscribe?email=${encodeURIComponent(
+        item.lead_email.trim().toLowerCase()
+      )}&t=${encodeURIComponent(unsubToken)}`;
+      const unsubscribePageUrl = `${publicOrigin}/unsubscribe?email=${encodeURIComponent(
+        item.lead_email.trim().toLowerCase()
+      )}&t=${encodeURIComponent(unsubToken)}`;
       const sendRes = await sendTransactionalEmail(
         {
           toEmail: item.lead_email,
           toName: item.lead_name,
           subject,
-          textBody: body,
+          textBody: `${body}\n\n---\nUnsubscribe: ${unsubscribePageUrl}`,
           fromEmail,
           fromName: db.workspace.brand || 'Sunmedx',
+          headers: {
+            'List-Unsubscribe': `<${unsubscribeOneClickUrl}>${
+              fromEmail ? `, <mailto:${fromEmail}?subject=Unsubscribe>` : ''
+            }`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
         },
         emailRuntime
       );

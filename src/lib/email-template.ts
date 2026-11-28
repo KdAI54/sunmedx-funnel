@@ -32,6 +32,7 @@ export interface RenderEmailOptions {
   defaultSenderEmail?: string;
   defaultSenderName?: string;
   defaultWebsite?: string;
+  unsubscribeUrl?: string;
 }
 
 function escapeHtml(text: string): string {
@@ -124,6 +125,9 @@ export function renderPromoEmailText(
   signatureLines.push(
     template.footer_note?.trim() || `${brandName} · Precision wellness protocols.`
   );
+  if (options?.unsubscribeUrl) {
+    signatureLines.push(`Unsubscribe: ${options.unsubscribeUrl}`);
+  }
   parts.push(`---\n${signatureLines.join('\n')}`);
   return parts.join('\n\n');
 }
@@ -157,6 +161,16 @@ export function renderPromoEmailHtml(
   const safeFooterNote = escapeHtml(
     t.footer_note || `You received this brand update from ${brandName}. Reply directly anytime.`
   );
+  const rawUnsubscribe = (options?.unsubscribeUrl || '').trim();
+  const safeUnsubscribeUrl = rawUnsubscribe
+    ? escapeHtml(
+        /^https?:\/\//i.test(rawUnsubscribe) ||
+          rawUnsubscribe.startsWith('/unsubscribe') ||
+          rawUnsubscribe === '#unsubscribe'
+          ? rawUnsubscribe
+          : '#unsubscribe'
+      )
+    : '';
 
   const paragraphsHtml = (t.body || '')
     .split(/\n{2,}/)
@@ -339,6 +353,11 @@ export function renderPromoEmailHtml(
               </table>
               <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11.5px;line-height:1.55;color:#64748b;">
                 ${safeFooterNote}
+                ${
+                  safeUnsubscribeUrl
+                    ? `<div style="margin-top:8px;">Do you want to stop getting messages from this mailing? <a href="${safeUnsubscribeUrl}" target="_blank" rel="noopener noreferrer" style="color:#475569;text-decoration:underline;font-weight:600;">Unsubscribe</a></div>`
+                    : ''
+                }
               </div>
             </td>
           </tr>

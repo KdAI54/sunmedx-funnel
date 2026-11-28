@@ -15,6 +15,7 @@ export interface SendEmailInput {
   htmlContent?: string;
   fromEmail?: string;
   fromName?: string;
+  headers?: Record<string, string>;
 }
 
 export interface SendEmailResult {
@@ -191,6 +192,9 @@ export async function sendTransactionalEmail(
           subject,
           textContent: textBody,
           htmlContent: input.htmlContent?.trim() || buildHtmlEmail(textBody, sender.name),
+          ...(input.headers && Object.keys(input.headers).length > 0
+            ? { headers: input.headers }
+            : {}),
         }),
       });
 
@@ -249,6 +253,9 @@ export async function sendTransactionalEmail(
           subject,
           text: textBody,
           html: input.htmlContent?.trim() || buildHtmlEmail(textBody, brandName),
+          ...(input.headers && Object.keys(input.headers).length > 0
+            ? { headers: input.headers }
+            : {}),
         }),
       });
       const payload = (await res.json().catch(() => ({}))) as {
@@ -331,5 +338,83 @@ export async function syncBrevoContact(
     return { synced: true };
   } catch (err) {
     return { synced: false, error: (err as Error).message };
+  }
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function importUnsubscribeKey(secret: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    'raw',
+    enc.encode(secret || 'sunmedx-unsubscribe-v1'),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+}
+
+export async function createUnsubscribeToken(
+  email: string,
+  secret: string
+): Promise<string> {
+  const normalized = email.trim().toLowerCase();
+  const key = await importUnsubscribeKey(secret);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(normalized));
+  return toBase64Url(new Uint8Array(sig));
+}
+
+export async function verifyUnsubscribeToken(
+  email: string,
+  token: string,
+  secret: string
+): Promise<boolean> {
+  if (!isValidEmail(email) || !token.trim()) return false;
+  const expected = await createUnsubscribeToken(email, secret);
+  if (expected.length !== token.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ token.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+export async function setBrevoContactSubscription(
+  email: string,
+  unsubscribed: boolean,
+  brevoApiKey?: string
+): Promise<{ ok: boolean; error?: string }> {
+  const apiKey = brevoApiKey?.trim();
+  const cleanEmail = email.trim().toLowerCase();
+  if (!apiKey || !isValidEmail(cleanEmail)) {
+    return { ok: false };
+  }
+  try {
+    const res = await fetch('https://api.brevo.com/v3/contacts', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        email: cleanEmail,
+        emailBlacklisted: unsubscribed,
+        updateEnabled: true,
+      }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      return { ok: false, error: data.message || `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
   }
 }

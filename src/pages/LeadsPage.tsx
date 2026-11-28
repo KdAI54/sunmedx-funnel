@@ -359,6 +359,7 @@ export function LeadsPage() {
                 </div>
                 <Badge tone={stageTone(lead.stage)}>{getStage(lead.stage).name}</Badge>
                 <Badge tone={tempTone(lead.temperature)}>{lead.temperature || 'new'}</Badge>
+                {lead.email_unsubscribed && <Badge tone="gray">Unsubscribed</Badge>}
                 <span className="sx-item-meta" style={{ width: 38, textAlign: 'right' }}>
                   {lead.score ?? 0}
                 </span>

@@ -101,6 +101,7 @@ export function EmailTemplatesPage() {
   const toast = useToast();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [unsubscribedEmails, setUnsubscribedEmails] = useState<string[]>([]);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [brandName, setBrandName] = useState(DEFAULT_WORKSPACE.brand);
   const [loading, setLoading] = useState(true);
@@ -137,6 +138,7 @@ export function EmailTemplatesPage() {
       ]);
       const items = tplRes.items || [];
       setTemplates(items);
+      setUnsubscribedEmails(tplRes.unsubscribedEmails || []);
       setLeads(leadsRes.items || []);
       if (healthRes) setHealth(healthRes);
       const resolvedBrand = cfgRes?.workspace?.brand || DEFAULT_WORKSPACE.brand;
@@ -251,9 +253,19 @@ export function EmailTemplatesPage() {
     }
   }
 
+  const unsubSet = useMemo(
+    () => new Set(unsubscribedEmails.map((e) => e.trim().toLowerCase())),
+    [unsubscribedEmails]
+  );
+
   const leadsWithEmail = useMemo(
-    () => leads.filter((l) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((l.email || '').trim())),
-    [leads]
+    () =>
+      leads.filter((l) => {
+        const em = (l.email || '').trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return false;
+        return !l.email_unsubscribed && !unsubSet.has(em);
+      }),
+    [leads, unsubSet]
   );
 
   const audienceRecipients = useMemo(() => {
@@ -274,6 +286,8 @@ export function EmailTemplatesPage() {
         defaultSenderName: `${brandName} Team`,
         defaultWebsite:
           typeof window !== 'undefined' ? window.location.origin : 'https://sunmedx-funnel.workers.dev',
+        unsubscribeUrl:
+          typeof window !== 'undefined' ? `${window.location.origin}/unsubscribe` : '/unsubscribe',
       }),
     [draft, brandName, previewName, health?.brevoSenderEmail]
   );
@@ -318,6 +332,10 @@ export function EmailTemplatesPage() {
           res.sentCount === 1 ? '' : 's'
         } via ${res.provider} (sender: ${res.senderEmail || 'verified'})${
           res.failedCount ? ` · ${res.failedCount} failed` : ''
+        }${
+          res.skippedUnsubscribed
+            ? ` · ${res.skippedUnsubscribed} unsubscribed skipped`
+            : ''
         }`;
         setSendReport({ ok: true, message: msg });
         toast.success(`Promotion sent via ${res.provider}`);

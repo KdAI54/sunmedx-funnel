@@ -365,7 +365,12 @@ export const api = {
   },
 
   emailTemplates: {
-    list: () => request<{ items: EmailTemplate[] }>('/api/email-templates'),
+    list: () =>
+      request<{
+        items: EmailTemplate[];
+        unsubscribedCount?: number;
+        unsubscribedEmails?: string[];
+      }>('/api/email-templates'),
     create: (body: EmailTemplateDraft) =>
       request<EmailTemplate>('/api/email-templates', {
         method: 'POST',
@@ -405,9 +410,36 @@ export const api = {
         senderEmail?: string;
         sentCount: number;
         failedCount: number;
+        skippedUnsubscribed?: number;
         results: Array<{ email: string; ok: boolean; messageId?: string; error?: string }>;
         error?: string;
       }>('/api/email-templates/send', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  },
+
+  unsubscribe: {
+    status: (email: string, t: string) =>
+      request<{
+        ok: boolean;
+        email: string;
+        brand: string;
+        unsubscribed: boolean;
+        unsubscribed_date?: string;
+      }>(`/api/unsubscribe/status?email=${encodeURIComponent(email)}&t=${encodeURIComponent(t)}`),
+    submit: (body: {
+      email: string;
+      t: string;
+      action?: 'unsubscribe' | 'resubscribe';
+      reason?: string;
+    }) =>
+      request<{
+        ok: boolean;
+        email: string;
+        unsubscribed: boolean;
+        unsubscribed_date?: string;
+      }>('/api/unsubscribe', {
         method: 'POST',
         body: JSON.stringify(body),
       }),

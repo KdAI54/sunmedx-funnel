@@ -26,6 +26,7 @@ import { MetricsPage } from './pages/MetricsPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { SitePage } from './pages/SitePage';
+import { UnsubscribePage } from './pages/UnsubscribePage';
 
 const SESSION_KEY = 'sx-operator-session';
 
@@ -172,6 +173,14 @@ function AppRoutes() {
           isLoggedIn={Boolean(operator)}
           operatorEmail={operator?.email}
         />
+      </RouteErrorBoundary>
+    );
+  }
+
+  if (pathname === '/unsubscribe') {
+    return (
+      <RouteErrorBoundary resetKey={pathname}>
+        <UnsubscribePage key={`unsub-${hydrationRevision}`} />
       </RouteErrorBoundary>
     );
   }
